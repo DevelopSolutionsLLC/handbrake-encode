@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(shellcheck *)",
+      "Bash(bash *)",
+      "WebSearch",
+      "Bash(mediainfo --Info-Parameters)",
+      "Bash(mediainfo --Help)",
+      "Bash(mediainfo --Inform=\"Video;%Width%\\\\n%Height%\")",
+      "Bash(chmod +x *)",
+      "Bash(command -v gh)",
+      "Bash(gh auth *)",
+      "Bash(command -v git)",
+      "Bash(git --version)",
+      "Bash(git init *)",
+      "Bash(git branch *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
+    ]
+  }
+}
