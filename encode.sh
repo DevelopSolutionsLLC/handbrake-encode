@@ -334,8 +334,8 @@ main() {
     fi
 
     if [[ -n "$ENCODE_DIR" && ! -d "$ENCODE_DIR" ]]; then
-        echo "ERROR: Encode directory does not exist: $ENCODE_DIR" >&2
-        exit 1
+        echo "WARNING: Scratch directory '$ENCODE_DIR' does not exist — encoding alongside source instead." >&2
+        ENCODE_DIR=""
     fi
 
     if [[ -n "$INFILE" && ! -f "$INFILE" ]]; then
