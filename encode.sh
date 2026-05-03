@@ -19,6 +19,7 @@ LOGDIR="/tmp"
 PID_FILE="/tmp/encode.pid"
 HANDBRAKE=""
 MEDIAINFO=""
+IS_WSL=0
 
 ANIME=0
 ENCODE_DIR="/mnt/SSD"
@@ -35,6 +36,19 @@ OPTIONS=""
 CODEC_TAG=""
 AUDIO_OPTS=""
 
+is_wsl() {
+    [[ -n "${WSL_DISTRO_NAME:-}" ]] || grep -qi microsoft /proc/version 2>/dev/null
+}
+is_wsl && IS_WSL=1
+
+to_win_path() {
+    if [[ $IS_WSL -eq 1 ]]; then
+        wslpath -w "$1"
+    else
+        echo "$1"
+    fi
+}
+
 usage() {
     echo "Usage: $0 [-a] [-e encode_dir] {-f media.mkv | -d dir}" 1>&2
     echo "  -f FILE   Single file to encode" 1>&2
@@ -45,7 +59,11 @@ usage() {
 }
 
 check_deps() {
-    HANDBRAKE=$(command -v HandBrakeCLI) || true
+    if [[ $IS_WSL -eq 1 ]]; then
+        HANDBRAKE=$(command -v HandBrakeCLI.exe) || true
+    else
+        HANDBRAKE=$(command -v HandBrakeCLI) || true
+    fi
     MEDIAINFO=$(command -v mediainfo) || true
     local screen_bin
     screen_bin=$(command -v screen) || true
@@ -240,7 +258,7 @@ encode_file() {
 
     set +e
     # shellcheck disable=SC2086
-    $HANDBRAKE $OPTIONS --input "$work_infile" --output "$outfile" > "$logfile" 2>&1
+    $HANDBRAKE $OPTIONS --input "$(to_win_path "$work_infile")" --output "$(to_win_path "$outfile")" > "$logfile" 2>&1
     local rc=$?
     set -e
 
