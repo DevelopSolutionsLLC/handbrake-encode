@@ -10,6 +10,10 @@ Automatically selects **x264** or **x265** based on source resolution, detects H
 - [mediainfo](https://mediainfo.sourceforge.net/)
 - [screen](https://www.gnu.org/software/screen/)
 
+### WSL (Windows Subsystem for Linux)
+
+Fully supported. The script detects WSL automatically and uses `HandBrakeCLI.exe` from your Windows PATH. Pass WSL paths as normal (e.g. `/mnt/c/Drop/movie.mkv`) — path conversion to Windows format is handled internally.
+
 ## Usage
 
 ```bash
@@ -69,6 +73,8 @@ When a scratch directory is specified:
 3. Validates the output by comparing duration to source (within 5%)
 4. On success: moves output back to the original directory, deletes both the copy and original
 5. On failure: keeps the original, cleans up scratch artifacts
+
+If the scratch directory does not exist at runtime, a warning is printed and the encode proceeds alongside the source file instead of aborting.
 
 ### Screen sessions and queueing
 
