@@ -140,13 +140,13 @@ detect_audio_tracks() {
     local lossless=""
     local ac3=""
 
-    lossless=$(echo "$track_info" | grep -i "DTS" | head -1 | cut -d ':' -f 1)
+    lossless=$(echo "$track_info" | grep -i "DTS" | head -1 | cut -d ':' -f 1) || true
 
     if [[ -z "$lossless" ]]; then
-        lossless=$(echo "$track_info" | grep -iE "TrueHD|MLP" | head -1 | cut -d ':' -f 1)
+        lossless=$(echo "$track_info" | grep -iE "TrueHD|MLP" | head -1 | cut -d ':' -f 1) || true
     fi
 
-    ac3=$(echo "$track_info" | grep -i "AC-3" | head -1 | cut -d ':' -f 1)
+    ac3=$(echo "$track_info" | grep -i "AC-3" | head -1 | cut -d ':' -f 1) || true
 
     if [[ -n "$lossless" && -n "$ac3" && "$lossless" != "$ac3" ]]; then
         AUDIO_OPTS="-a ${lossless},${ac3} -E copy"
