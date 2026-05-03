@@ -32,7 +32,11 @@ Output is placed alongside the source as `{stem}-x264.mkv` or `{stem}-x265.mkv`.
 
 ### Encode directory workflow (-e)
 
-Copies source to scratch dir, encodes there, validates output duration (within 5% of source), moves output back to original directory, deletes both copy and original on success. On failure: original is kept, scratch artifacts are cleaned up.
+Copies source to scratch dir, encodes there, validates output duration (within 5% of source), moves output back to original directory, deletes both copy and original on success. On failure: original is kept, scratch artifacts are cleaned up. If the scratch directory does not exist at runtime, a warning is printed and encoding falls back to the source directory.
+
+### WSL support
+
+Detected at init via `$WSL_DISTRO_NAME` (env var, fast) with `/proc/version` grep as fallback. On WSL, `check_deps` resolves `HandBrakeCLI.exe` instead of `HandBrakeCLI`. All shell-side operations (`cp`, `mv`, `rm`, `mediainfo`, `validate_output`) use WSL paths throughout; only the `--input`/`--output` arguments passed to HandBrakeCLI are converted to Windows paths via `wslpath -w` (`to_win_path()`).
 
 ### Queue system
 
