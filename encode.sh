@@ -255,6 +255,7 @@ encode_file() {
 
     echo "Encoding: $file_basename (${SRC_WIDTH}x${SRC_HEIGHT}, ${CODEC_TAG}, bitrate=${BITRATE}, buffer=${BUFFER})"
     echo "Log: $logfile"
+    echo "Encode command: $HANDBRAKE $OPTIONS --input \"$(to_win_path "$work_infile")\" --output \"$(to_win_path "$outfile")\""
 
     set +e
     # shellcheck disable=SC2086
@@ -354,7 +355,10 @@ main() {
         local relaunch_args
         relaunch_args="$(build_relaunch_args)"
 
-        screen -S "encoding" -dm bash -c "$(printf '%q' "$script_path")$relaunch_args"
+        local launch_cmd
+        launch_cmd="PATH=$(printf '%q' "$PATH"); export PATH; exec $(printf '%q' "$script_path")$relaunch_args"
+
+        screen -S "encoding" -dm bash -c "$launch_cmd"
         echo "Encode launched in screen session 'encoding'."
         echo "Attach with: screen -r encoding"
         exit 0
