@@ -88,8 +88,8 @@ detect_threads() {
     else
         THREADS=$(nproc 2>/dev/null || lscpu | grep -E '^CPU\(s\):' | awk '{print $2}')
     fi
-    if [[ $THREADS -gt 3 ]]; then
-        THREADS=$((THREADS - 3))
+    if [[ $THREADS -gt 2 ]]; then
+        THREADS=$((THREADS - 2))
     fi
 }
 
