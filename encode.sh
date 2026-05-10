@@ -104,6 +104,20 @@ detect_resolution() {
     fi
 }
 
+validate_input_file() {
+    local file="$1"
+
+    if [[ ! -f "$file" ]]; then
+        echo "ERROR: File not found: $file" >&2
+        return 1
+    fi
+    if [[ ! -r "$file" ]]; then
+        echo "ERROR: File is not readable: $file" >&2
+        echo "Fix permissions, for example: chmod u+r -- \"$file\"" >&2
+        return 1
+    fi
+}
+
 lookup_bitrate() {
     local height="$1"
     local anime="$2"
@@ -230,6 +244,8 @@ validate_output() {
 
 encode_file() {
     local infile="$1"
+    validate_input_file "$infile"
+
     local infile_abs
     infile_abs="$(cd "$(dirname "$infile")" && pwd)/$(basename "$infile")"
     local src_dir
@@ -339,9 +355,8 @@ main() {
         ENCODE_DIR=""
     fi
 
-    if [[ -n "$INFILE" && ! -f "$INFILE" ]]; then
-        echo "ERROR: File not found: $INFILE" >&2
-        exit 1
+    if [[ -n "$INFILE" ]]; then
+        validate_input_file "$INFILE"
     fi
 
     if [[ -n "$DIR" && ! -d "$DIR" ]]; then
