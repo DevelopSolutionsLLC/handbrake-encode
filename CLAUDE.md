@@ -49,7 +49,7 @@ Detected at init via `$WSL_DISTRO_NAME` (env var, fast) with `/proc/version` gre
 
 - `--crop 0:0:0:0`: auto-crop is disabled — source frame is preserved exactly
 - No hardcoded `-X`/`-Y` dimensions — source resolution is preserved
-- Thread count: `nproc - 3` (or `sysctl hw.ncpu - 3` on macOS), reserving 3 logical CPUs for system headroom
+- Thread count: `nproc - 2` (or `sysctl hw.ncpu - 2` on macOS), reserving 2 logical CPUs for system headroom
 - Smart audio: selects first lossless track (DTS › TrueHD/MLP) + first AC-3 track and passes both through with `-E copy`; falls back to track 1 if neither is found
 - Subtitles: adds `scan` + tracks 1–10, defaults to the scanned forced subtitle, so foreign-language forced subs are included automatically
 - x265 path enables HDR10 via `hdr10:hdr10-opt` encopts; no SAO (`no-sao`), deblock `-1,-1`
