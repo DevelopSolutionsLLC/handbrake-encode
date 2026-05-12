@@ -187,13 +187,15 @@ build_encoder_options() {
 
     if [[ $SRC_HEIGHT -ge 2160 ]]; then
         CODEC_TAG="x265"
+        local preset="veryslow"
         local tune_opt=""
         if [[ "$ANIME" == "1" ]]; then
+            preset="slower"
             tune_opt="--encoder-tune animation"
         fi
 
         OPTIONS="$OPTIONS --encoder x265_10bit --encoder-profile main10 --encoder-level 5.1"
-        OPTIONS="$OPTIONS -q 16 --encoder-preset slower $tune_opt"
+        OPTIONS="$OPTIONS -q 16 --encoder-preset $preset $tune_opt"
         OPTIONS="$OPTIONS --encopts pools=${THREADS}:no-sao:selective-sao=0:deblock=-1,-1:hdr10:hdr10-opt:bitrate=${BITRATE}:vbv-maxrate=${BUFFER}:vbv-bufsize=${BUFFER}"
         OPTIONS="$OPTIONS --no-decomb --no-deinterlace"
     else

@@ -28,7 +28,7 @@ Output is placed alongside the source as `{stem}-x264.mkv` or `{stem}-x265.mkv`.
 | 2160p+ | >= 2160 | x265 | 18700 | 6560 | 40000 |
 
 - x264: two-pass, `--x264-preset placebo`, High 4.1
-- x265: CRF 16, `--encoder-preset slower`, Main10 5.1, HDR10 enabled for 2160p+
+- x265: CRF 16, Main10 5.1, HDR10 enabled for 2160p+; film uses `--encoder-preset veryslow`, anime uses `--encoder-preset slower`
 
 ### Encode directory workflow (-e)
 
