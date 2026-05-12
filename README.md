@@ -46,7 +46,7 @@ Fully supported. The script detects WSL automatically and uses `HandBrakeCLI.exe
 The source resolution is detected via `mediainfo`. The codec is chosen automatically:
 
 - **Height < 2160**: x264 (H.264 High profile, Level 4.1, two-pass placebo)
-- **Height >= 2160**: x265 10-bit (HEVC Main10, Level 5.1, CRF 16 veryslow, HDR10)
+- **Height >= 2160**: x265 10-bit (HEVC Main10, Level 5.1, CRF 16, HDR10; film veryslow, anime slower)
 
 No dimensions are hardcoded -- source resolution is preserved as-is.
 
