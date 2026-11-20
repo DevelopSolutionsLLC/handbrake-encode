@@ -1,22 +1,12 @@
 #!/bin/bash
-#
-# encode.sh — Unified video encoding via HandBrakeCLI
-#
-# Copyright (c) 2019 Free Software Foundation, Inc.
-# This is free software. You may redistribute copies of it under the terms of
-# the GNU General Public License.
-# There is NO WARRANTY, to the extent permitted by law.
-#
-# Written by Victor T. Chevalier
-#
-# Usage:
-#   ./encode.sh [-a] [-e dir] -f media.mkv
-#   ./encode.sh [-a] [-e dir] -d /path/to/dir
-#
+# Encode video with HandBrakeCLI, verify the output, then replace the source.
+# Copyright (c) 2019 Victor T. Chevalier. GNU GPL; no warranty.
 set -euo pipefail
 
-LOGDIR="/tmp"
-PID_FILE="/tmp/encode.pid"
+TMP_ROOT="${TMPDIR:-/tmp}"
+TMP_ROOT="${TMP_ROOT%/}"
+LOGDIR="$TMP_ROOT"
+LOCK_DIR="$TMP_ROOT/encode.lock"
 HANDBRAKE=""
 MEDIAINFO=""
 IS_WSL=0
@@ -50,12 +40,12 @@ to_win_path() {
 }
 
 usage() {
-    echo "Usage: $0 [-a] [-e encode_dir] {-f media.mkv | -d dir}" 1>&2
-    echo "  -f FILE   Single file to encode" 1>&2
-    echo "  -d DIR    Encode all .mkv files in directory (sequential)" 1>&2
-    echo "  -a        Anime mode (tune + bitrate)" 1>&2
-    echo "  -e DIR    Scratch directory for encoding (SSD/tmpfs)" 1>&2
-    exit 1
+    echo "Usage: $0 [-a] [-e encode_dir] {-f media.mkv | -d dir}"
+    echo "  -f FILE   Single file to encode"
+    echo "  -d DIR    Encode every .mkv under DIR, one at a time"
+    echo "  -a        Anime mode (tune + bitrate)"
+    echo "  -e DIR    Scratch directory for encoding (SSD/tmpfs)"
+    exit "${1:-0}"
 }
 
 check_deps() {
@@ -91,14 +81,21 @@ detect_threads() {
     if [[ $THREADS -gt 2 ]]; then
         THREADS=$((THREADS - 2))
     fi
+    # A pinned cpuset can measure faster with a set count than nproc - 2.
+    if [[ ${ENCODE_POOLS:-} =~ ^[1-9][0-9]*$ ]]; then
+        THREADS=$ENCODE_POOLS
+    fi
 }
 
 detect_resolution() {
     local file="$1"
-    SRC_WIDTH=$("$MEDIAINFO" --Inform="Video;%Width%" "$file")
-    SRC_HEIGHT=$("$MEDIAINFO" --Inform="Video;%Height%" "$file")
+    SRC_WIDTH=$("$MEDIAINFO" --Inform="Video;%Width%\n" "$file")
+    SRC_HEIGHT=$("$MEDIAINFO" --Inform="Video;%Height%\n" "$file")
+    # Dolby Vision dual-layer sources carry a second video stream.
+    SRC_WIDTH=${SRC_WIDTH%%$'\n'*}
+    SRC_HEIGHT=${SRC_HEIGHT%%$'\n'*}
 
-    if [[ -z "$SRC_WIDTH" || -z "$SRC_HEIGHT" || "$SRC_WIDTH" == "0" || "$SRC_HEIGHT" == "0" ]]; then
+    if [[ ! $SRC_WIDTH =~ ^[1-9][0-9]*$ || ! $SRC_HEIGHT =~ ^[1-9][0-9]*$ ]]; then
         echo "ERROR: Cannot detect resolution for: $file" >&2
         return 1
     fi
@@ -146,28 +143,40 @@ lookup_bitrate() {
     fi
 }
 
+# Print "pos:lang" of the first track matching a format regex: in language $3
+# when given, else English first, then any language.
+pick_track() {
+    local info="$1" format="$2" lang="${3:-}"
+    awk -F: -v re="$format" -v lang="$lang" '
+        tolower($2) ~ re {
+            if (lang != "" ? $3 == lang : $3 ~ /^en/) { print $1 ":" $3; found = 1; exit }
+            if (lang == "" && first == "") first = $1 ":" $3
+        }
+        END { if (!found && first != "") print first }' <<< "$info"
+}
+
 detect_audio_tracks() {
     local file="$1"
-    local track_info
-    track_info=$("$MEDIAINFO" --Inform="Audio;%StreamKindPos%:%Format%\n" "$file")
+    local info lossless compat
+    info=$("$MEDIAINFO" --Inform="Audio;%StreamKindPos%:%Format%:%Language%\n" "$file")
 
-    local lossless=""
-    local ac3=""
-
-    lossless=$(echo "$track_info" | grep -i "DTS" | head -1 | cut -d ':' -f 1) || true
-
-    if [[ -z "$lossless" ]]; then
-        lossless=$(echo "$track_info" | grep -iE "TrueHD|MLP" | head -1 | cut -d ':' -f 1) || true
+    lossless=$(pick_track "$info" '^dts')
+    [[ -n "$lossless" ]] || lossless=$(pick_track "$info" '^(truehd|mlp)')
+    # The compatibility track must match the main track's language.
+    if [[ -n "$lossless" ]]; then
+        compat=$(pick_track "$info" '^(e-)?ac-3' "${lossless#*:}")
+    else
+        compat=$(pick_track "$info" '^(e-)?ac-3')
     fi
+    lossless=${lossless%%:*}
+    compat=${compat%%:*}
 
-    ac3=$(echo "$track_info" | grep -i "AC-3" | head -1 | cut -d ':' -f 1) || true
-
-    if [[ -n "$lossless" && -n "$ac3" && "$lossless" != "$ac3" ]]; then
-        AUDIO_OPTS="-a ${lossless},${ac3} -E copy"
+    if [[ -n "$lossless" && -n "$compat" && "$lossless" != "$compat" ]]; then
+        AUDIO_OPTS="-a ${lossless},${compat} -E copy"
     elif [[ -n "$lossless" ]]; then
         AUDIO_OPTS="-a ${lossless} -E copy"
-    elif [[ -n "$ac3" ]]; then
-        AUDIO_OPTS="-a ${ac3} -E copy"
+    elif [[ -n "$compat" ]]; then
+        AUDIO_OPTS="-a ${compat} -E copy"
     else
         AUDIO_OPTS="-a 1 -E copy"
     fi
@@ -176,7 +185,7 @@ detect_audio_tracks() {
 build_encoder_options() {
     local infile="$1"
 
-    detect_resolution "$infile"
+    detect_resolution "$infile" || return 1
     lookup_bitrate "$SRC_HEIGHT" "$ANIME"
     detect_audio_tracks "$infile"
     detect_threads
@@ -224,14 +233,15 @@ validate_output() {
     local src_duration out_duration
     src_duration=$("$MEDIAINFO" --Inform="General;%Duration%" "$source")
     out_duration=$("$MEDIAINFO" --Inform="General;%Duration%" "$output")
+    src_duration=${src_duration%%.*}
+    out_duration=${out_duration%%.*}
 
-    if [[ -z "$out_duration" || "$out_duration" == "0" ]]; then
-        echo "ERROR: Output file has no valid duration" >&2
+    if [[ ! $src_duration =~ ^[1-9][0-9]*$ || ! $out_duration =~ ^[1-9][0-9]*$ ]]; then
+        echo "ERROR: Source or output has no valid duration" >&2
         return 1
     fi
 
     local diff=$(( src_duration - out_duration ))
-    # absolute value
     if [[ $diff -lt 0 ]]; then
         diff=$(( -diff ))
     fi
@@ -240,80 +250,87 @@ validate_output() {
         echo "WARNING: Duration mismatch — source: ${src_duration}ms, output: ${out_duration}ms" >&2
         return 1
     fi
-
-    return 0
 }
 
+# Each step checks its own status: callers run this under ||, where set -e is
+# off, and a missed failure would delete the only good copy.
 encode_file() {
     local infile="$1"
-    validate_input_file "$infile"
+    validate_input_file "$infile" || return 1
 
-    local infile_abs
-    infile_abs="$(cd "$(dirname "$infile")" && pwd)/$(basename "$infile")"
-    local src_dir
-    src_dir="$(dirname "$infile_abs")"
-    local file_basename
-    file_basename="$(basename "$infile_abs")"
+    local infile_abs src_dir file_basename
+    src_dir="$(cd "$(dirname "$infile")" && pwd)" || return 1
+    file_basename="$(basename "$infile")"
+    infile_abs="${src_dir}/${file_basename}"
     local stem="${file_basename%.*}"
 
-    build_encoder_options "$infile_abs"
+    build_encoder_options "$infile_abs" || return 1
 
     local work_infile="$infile_abs"
-    local outfile="${src_dir}/${stem}-${CODEC_TAG}.mkv"
+    local final="${src_dir}/${stem}-${CODEC_TAG}.mkv"
+    local outfile="$final"
     local logfile="${LOGDIR}/encode-${stem}.log"
-    local used_encode_dir=0
+    local scratch=""
 
     if [[ -n "$ENCODE_DIR" ]]; then
-        used_encode_dir=1
-        echo "Copying to encode directory: ${ENCODE_DIR}/"
-        cp "$infile_abs" "${ENCODE_DIR}/"
-        work_infile="${ENCODE_DIR}/${file_basename}"
-        outfile="${ENCODE_DIR}/${stem}-${CODEC_TAG}.mkv"
+        scratch="$(cd "$ENCODE_DIR" && pwd)" || return 1
+        [[ "$scratch" != "$src_dir" ]] || scratch=""
+    fi
+    if [[ -n "$scratch" ]]; then
+        work_infile="${scratch}/${file_basename}"
+        outfile="${scratch}/${stem}-${CODEC_TAG}.mkv"
+        echo "Copying to encode directory: ${scratch}/"
+        if ! cp "$infile_abs" "$work_infile"; then
+            echo "ERROR: Copy to ${scratch} failed; keeping the original" >&2
+            rm -f "$work_infile"
+            return 1
+        fi
     fi
 
     echo "Encoding: $file_basename (${SRC_WIDTH}x${SRC_HEIGHT}, ${CODEC_TAG}, bitrate=${BITRATE}, buffer=${BUFFER})"
     echo "Log: $logfile"
     echo "Encode command: $HANDBRAKE $OPTIONS --input \"$(to_win_path "$work_infile")\" --output \"$(to_win_path "$outfile")\""
 
-    set +e
+    local rc=0
     # shellcheck disable=SC2086
-    $HANDBRAKE $OPTIONS --input "$(to_win_path "$work_infile")" --output "$(to_win_path "$outfile")" > "$logfile" 2>&1
-    local rc=$?
-    set -e
+    $HANDBRAKE $OPTIONS --input "$(to_win_path "$work_infile")" --output "$(to_win_path "$outfile")" > "$logfile" 2>&1 || rc=$?
 
-    if [[ $rc -eq 0 ]] && validate_output "$work_infile" "$outfile"; then
-        if [[ $used_encode_dir -eq 1 ]]; then
-            mv "$outfile" "${src_dir}/"
-            rm -f "$work_infile"
-            outfile="${src_dir}/${stem}-${CODEC_TAG}.mkv"
-        fi
-        rm -f "$infile_abs"
-        echo "SUCCESS: $outfile"
-    else
+    if [[ $rc -ne 0 ]] || ! validate_output "$work_infile" "$outfile"; then
         echo "ENCODE FAILED: keeping original — $infile_abs" >&2
-        if [[ $used_encode_dir -eq 1 ]]; then
-            rm -f "$work_infile" "$outfile"
-        else
-            rm -f "$outfile"
-        fi
+        rm -f "$outfile"
+        [[ -z "$scratch" ]] || rm -f "$work_infile"
         return 1
     fi
-}
-
-wait_for_queue() {
-    if [[ -f "$PID_FILE" ]]; then
-        local pid
-        pid=$(cat "$PID_FILE")
-        while kill -0 "$pid" 2>/dev/null; do
-            echo "Another encode is running (PID $pid). Waiting..."
-            sleep 30
-        done
+    if [[ -n "$scratch" ]]; then
+        if ! mv "$outfile" "$final"; then
+            echo "ERROR: Move failed; original kept, output left at $outfile" >&2
+            rm -f "$work_infile"
+            return 1
+        fi
+        rm -f "$work_infile"
     fi
-    echo $$ > "$PID_FILE"
+    rm -f "$infile_abs"
+    echo "SUCCESS: $final"
 }
 
-cleanup_pid() {
-    rm -f "$PID_FILE"
+# mkdir is atomic on every platform; flock is absent on macOS.
+acquire_lock() {
+    local pid
+    until mkdir "$LOCK_DIR" 2>/dev/null; do
+        pid=$(cat "$LOCK_DIR/pid" 2>/dev/null) || pid=""
+        if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
+            rm -rf "$LOCK_DIR"
+            continue
+        fi
+        echo "Another encode is running (PID ${pid:-starting}). Waiting..." >&2
+        sleep 30
+    done
+    echo $$ > "$LOCK_DIR/pid"
+    trap release_lock EXIT
+}
+
+release_lock() {
+    [[ "$(cat "$LOCK_DIR/pid" 2>/dev/null)" != "$$" ]] || rm -rf "$LOCK_DIR"
 }
 
 build_relaunch_args() {
@@ -330,8 +347,18 @@ build_relaunch_args() {
     echo "$quoted_args"
 }
 
+encode_directory() {
+    local file failed=0
+    # fd 3 keeps the list away from HandBrakeCLI, which reads stdin.
+    while IFS= read -r -d '' file <&3; do
+        echo "--- Processing: $file ---"
+        encode_file "$file" || { failed=1; echo "Skipping failed file: $file" >&2; }
+    done 3< <(find "$DIR" -type f -iname '*.mkv' ! -iname '*-x264.mkv' ! -iname '*-x265.mkv' -print0)
+    return "$failed"
+}
+
 main() {
-    check_deps
+    [[ $# -gt 0 ]] || usage 0
 
     if [[ "${1:-}" == "--_internal" ]]; then
         INTERNAL=1
@@ -344,13 +371,16 @@ main() {
             d) DIR="${OPTARG}" ;;
             e) ENCODE_DIR="${OPTARG}" ;;
             f) INFILE="${OPTARG}" ;;
-            h|*) usage ;;
+            h) usage 0 ;;
+            *) usage 1 >&2 ;;
         esac
     done
 
     if [[ -z "$INFILE" && -z "$DIR" ]]; then
-        usage
+        usage 1 >&2
     fi
+
+    check_deps
 
     if [[ -n "$ENCODE_DIR" && ! -d "$ENCODE_DIR" ]]; then
         echo "WARNING: Scratch directory '$ENCODE_DIR' does not exist — encoding alongside source instead." >&2
@@ -381,16 +411,11 @@ main() {
         exit 0
     fi
 
-    trap cleanup_pid EXIT
+    acquire_lock
 
     if [[ -n "$DIR" ]]; then
-        find "$DIR" -type f -iname '*.mkv' | while read -r file; do
-            wait_for_queue
-            echo "--- Processing: $file ---"
-            encode_file "$file" || echo "Skipping failed file: $file"
-        done
-    elif [[ -n "$INFILE" ]]; then
-        wait_for_queue
+        encode_directory
+    else
         encode_file "$INFILE"
     fi
 }
