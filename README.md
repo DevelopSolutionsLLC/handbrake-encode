@@ -1,90 +1,35 @@
 # handbrake-encode
 
-A unified video encoding script that wraps [HandBrakeCLI](https://handbrake.fr/docs/en/latest/cli/cli-options.html) with smart defaults for high-quality encodes.
-
-Automatically selects **x264** or **x265** based on source resolution, detects HDR, picks the best audio tracks, and manages encoding jobs in background screen sessions that survive SSH disconnects.
+`encode.sh` wraps [HandBrakeCLI](https://handbrake.fr/docs/en/latest/cli/cli-options.html): it picks x264 or x265 from the source resolution, keeps the best audio, runs in a detachable `screen` session, verifies the output, and replaces the source.
 
 ## Requirements
 
-- [HandBrakeCLI](https://handbrake.fr/)
-- [mediainfo](https://mediainfo.sourceforge.net/)
-- [screen](https://www.gnu.org/software/screen/)
+- [HandBrakeCLI](https://handbrake.fr/), [mediainfo](https://mediaarea.net/en/MediaInfo) and [screen](https://www.gnu.org/software/screen/)
+- Bash 3.2 or later; macOS, Linux and WSL (which uses `HandBrakeCLI.exe` from the Windows PATH)
 
-### WSL (Windows Subsystem for Linux)
+## Install
 
-Fully supported. The script detects WSL automatically and uses `HandBrakeCLI.exe` from your Windows PATH. Pass WSL paths as normal (e.g. `/mnt/c/Drop/movie.mkv`) — path conversion to Windows format is handled internally.
+Clone the repository and run `./encode.sh`, or copy `encode.sh` onto your PATH.
 
 ## Usage
 
-```bash
-# Single file
-./encode.sh -f movie.mkv
+| Command | Does |
+|---|---|
+| `./encode.sh -f movie.mkv` | Encode one file |
+| `./encode.sh -d /path/to/movies` | Encode every `.mkv` under the directory, one at a time |
+| `./encode.sh -a -f anime.mkv` | Anime tune and bitrate |
+| `./encode.sh -e /mnt/SSD -f movie.mkv` | Encode on a scratch drive (default `/mnt/SSD`) |
+| `screen -r encoding` | Watch a running encode |
 
-# All .mkv files in a directory (sequential queue)
-./encode.sh -d /path/to/movies/
+Output lands beside the source as `<name>-x264.mkv` or `<name>-x265.mkv`. **The source is deleted** once the output exists and its duration is within 5 % of the source; on failure the source is kept. Set `ENCODE_POOLS` to fix the x265 thread-pool count.
 
-# Anime mode (adjusts tune and bitrate)
-./encode.sh -a -f anime.mkv
+## Documentation
 
-# Use a fast scratch drive for encoding
-./encode.sh -e /mnt/SSD -f movie.mkv
-```
-
-### Flags
-
-| Flag | Description |
-|------|-------------|
-| `-f FILE` | Single file to encode |
-| `-d DIR` | Encode all `.mkv` files in directory sequentially |
-| `-a` | Anime mode (tune + lower bitrate) |
-| `-e DIR` | Scratch directory for encoding (default: `/mnt/SSD`) |
-
-## How it works
-
-### Codec selection
-
-The source resolution is detected via `mediainfo`. The codec is chosen automatically:
-
-- **Height < 2160**: x264 (H.264 High profile, Level 4.1, two-pass placebo)
-- **Height >= 2160**: x265 10-bit (HEVC Main10, Level 5.1, CRF 16, HDR10; film veryslow, anime slower)
-
-No dimensions are hardcoded -- source resolution is preserved as-is.
-
-### Bitrate table
-
-| Tier | Height | Codec | Film | Anime | VBV Buffer |
-|------|--------|-------|------|-------|------------|
-| 720p | < 1080 | x264 | 7010 | 2460 | 20000 |
-| 1080p | 1080-2159 | x264 | 14020 | 4920 | 30000 |
-| 2160p+ | >= 2160 | x265 | 18700 | 6560 | 40000 |
-
-### Audio selection
-
-Intelligently selects audio tracks using `mediainfo`:
-1. Finds the first lossless track (DTS/TrueHD/MLP)
-2. Finds the first AC-3 compatibility track
-3. Passes both through without re-encoding
-
-### Encode directory workflow (`-e`)
-
-When a scratch directory is specified:
-1. Copies the source file to the scratch drive
-2. Encodes there (faster on SSD/tmpfs)
-3. Validates the output by comparing duration to source (within 5%)
-4. On success: moves output back to the original directory, deletes both the copy and original
-5. On failure: keeps the original, cleans up scratch artifacts
-
-If the scratch directory does not exist at runtime, a warning is printed and the encode proceeds alongside the source file instead of aborting.
-
-### Screen sessions and queueing
-
-All encodes run inside a detached `screen` session, so they survive SSH disconnects. In directory mode, files are processed sequentially. A PID file (`/tmp/encode.pid`) prevents concurrent encodes.
-
-```bash
-# Check on a running encode
-screen -r encoding
-```
+- [Architecture](docs/architecture.md) — codec, bitrate, audio and subtitle rules; scratch workflow; queue
+- [Development](docs/development.md) — the gate and releases
+- [Decisions](docs/decisions.md) — settled design choices
+- [Changelog](CHANGELOG.md)
 
 ## License
 
-GNU General Public License -- see source for details.
+GNU General Public License; see the header of `encode.sh`.
