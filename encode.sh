@@ -446,7 +446,9 @@ main() {
         relaunch_args="$(build_relaunch_args)"
 
         local launch_cmd
-        launch_cmd="PATH=$(printf '%q' "$PATH"); export PATH; exec $(printf '%q' "$script_path")$relaunch_args"
+        # ENCODE_WRAPPER is shell words, like GIT_SSH_COMMAND: a job lease
+        # such as flock must hold the whole worker, not one HandBrake run.
+        launch_cmd="PATH=$(printf '%q' "$PATH"); export PATH; exec ${ENCODE_WRAPPER:-} $(printf '%q' "$script_path")$relaunch_args"
 
         screen -S "encoding" -dm bash -c "$launch_cmd"
         echo "Encode launched in screen session 'encoding'."

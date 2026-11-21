@@ -2,7 +2,9 @@
 
 `encode.sh` is one Bash script. `main` parses options, checks dependencies, and relaunches
 itself inside `screen -S encoding` with the hidden `--_internal` flag, so an encode survives an
-SSH disconnect. The internal run takes the queue lock and encodes one file or a directory.
+SSH disconnect. `ENCODE_WRAPPER`, when set, is shell words that run before the internal run,
+so a caller's job lease covers the whole worker. The internal run takes the queue lock and
+encodes one file or a directory.
 
 ## Codec and bitrate
 
