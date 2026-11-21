@@ -12,11 +12,21 @@ reports its duration. The stub HandBrakeCLI reads stdin like the real one.
 | static | syntax and shellcheck findings |
 | usage | a bare command prints usage and exits 0 |
 | directory | each source encoded once, outputs skipped, a failure keeps its source |
-| audio | English lossless first; the compatibility track matches its language |
+| audio | English first within the lossless format; the compatibility track matches its language, or is English first when the main track is untagged |
+| x264 tier | a 1080p source takes x264 at the 1080p bitrate and the `-x264` suffix |
+| duration | an output more than 5 % off the source's duration is removed and the source kept |
 | stale lock | a dead holder's lock is reclaimed and the run releases its own |
+| scratch alias | a scratch path that resolves to the source directory never costs the source |
+| orphan lock | a lock directory without a holder's marker is reclaimed |
+| nested orphan | a dead publisher's private directory stranded inside the lock is cleared |
+| lock race | a waiter that saw a dead PID leaves the lock alone once another waiter holds it |
+| own-pid lock | a dead holder's lock naming the run's own reused PID is reclaimed |
 
 `ENCODE_SCRIPT=/path/to/old/encode.sh tests/run.sh` runs the behaviour checks against another
-copy; each check fails against the release before 2026-11-20.
+copy; each check but `x264 tier` and `duration` fails against the release before 2026-11-20.
+The stub `mediainfo` reports 1920x1080 for a source named `*1080*` and half the duration for
+the output of a source named `*short*`. The lock race check swaps in a
+`cat` or `mv` stub that hands the lock to a live PID at the moment a second waiter would.
 
 Review-only: the header line, one-line function comments and the 80-column comment limit;
 ShellCheck 0.11 has no check for them. The gate runs on the machine's `bash`; run it under
