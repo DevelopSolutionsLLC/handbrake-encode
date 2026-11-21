@@ -7,6 +7,7 @@ TMP_ROOT="${TMPDIR:-/tmp}"
 TMP_ROOT="${TMP_ROOT%/}"
 LOGDIR="$TMP_ROOT"
 LOCK_DIR="$TMP_ROOT/encode.lock"
+LOCK_HOLDER=""
 HANDBRAKE=""
 MEDIAINFO=""
 IS_WSL=0
@@ -144,7 +145,7 @@ lookup_bitrate() {
 }
 
 # Print "pos:lang" of the first track matching a format regex: in language $3
-# when given, else English first, then any language.
+# when non-empty, else English first, then any language.
 pick_track() {
     local info="$1" format="$2" lang="${3:-}"
     awk -F: -v re="$format" -v lang="$lang" '
@@ -162,7 +163,8 @@ detect_audio_tracks() {
 
     lossless=$(pick_track "$info" '^dts')
     [[ -n "$lossless" ]] || lossless=$(pick_track "$info" '^(truehd|mlp)')
-    # The compatibility track must match the main track's language.
+    # The compatibility track matches the main track's language; an untagged
+    # main track names none, so the pick falls back to English, then any.
     if [[ -n "$lossless" ]]; then
         compat=$(pick_track "$info" '^(e-)?ac-3' "${lossless#*:}")
     else
@@ -270,67 +272,108 @@ encode_file() {
     local final="${src_dir}/${stem}-${CODEC_TAG}.mkv"
     local outfile="$final"
     local logfile="${LOGDIR}/encode-${stem}.log"
-    local scratch=""
+    local scratch="" failure="" rc=0
 
     if [[ -n "$ENCODE_DIR" ]]; then
         scratch="$(cd "$ENCODE_DIR" && pwd)" || return 1
-        [[ "$scratch" != "$src_dir" ]] || scratch=""
+        # -ef sees one directory behind a symlink or a second mount path.
+        [[ ! "$scratch" -ef "$src_dir" ]] || scratch=""
     fi
     if [[ -n "$scratch" ]]; then
         work_infile="${scratch}/${file_basename}"
         outfile="${scratch}/${stem}-${CODEC_TAG}.mkv"
         echo "Copying to encode directory: ${scratch}/"
-        if ! cp "$infile_abs" "$work_infile"; then
-            echo "ERROR: Copy to ${scratch} failed; keeping the original" >&2
-            rm -f "$work_infile"
-            return 1
+        cp "$infile_abs" "$work_infile" \
+            || failure="ERROR: Copy to ${scratch} failed; keeping the original"
+    fi
+
+    if [[ -z "$failure" ]]; then
+        echo "Encoding: $file_basename (${SRC_WIDTH}x${SRC_HEIGHT}, ${CODEC_TAG}, bitrate=${BITRATE}, buffer=${BUFFER})"
+        echo "Log: $logfile"
+        echo "Encode command: $HANDBRAKE $OPTIONS --input \"$(to_win_path "$work_infile")\" --output \"$(to_win_path "$outfile")\""
+
+        # shellcheck disable=SC2086
+        $HANDBRAKE $OPTIONS --input "$(to_win_path "$work_infile")" --output "$(to_win_path "$outfile")" > "$logfile" 2>&1 || rc=$?
+
+        if [[ $rc -ne 0 ]] || ! validate_output "$work_infile" "$outfile"; then
+            failure="ENCODE FAILED: keeping original — $infile_abs"
+            rm -f "$outfile"
+        elif [[ -n "$scratch" ]] && ! mv "$outfile" "$final"; then
+            failure="ERROR: Move failed; original kept, output left at $outfile"
         fi
     fi
 
-    echo "Encoding: $file_basename (${SRC_WIDTH}x${SRC_HEIGHT}, ${CODEC_TAG}, bitrate=${BITRATE}, buffer=${BUFFER})"
-    echo "Log: $logfile"
-    echo "Encode command: $HANDBRAKE $OPTIONS --input \"$(to_win_path "$work_infile")\" --output \"$(to_win_path "$outfile")\""
-
-    local rc=0
-    # shellcheck disable=SC2086
-    $HANDBRAKE $OPTIONS --input "$(to_win_path "$work_infile")" --output "$(to_win_path "$outfile")" > "$logfile" 2>&1 || rc=$?
-
-    if [[ $rc -ne 0 ]] || ! validate_output "$work_infile" "$outfile"; then
-        echo "ENCODE FAILED: keeping original — $infile_abs" >&2
-        rm -f "$outfile"
-        [[ -z "$scratch" ]] || rm -f "$work_infile"
-        return 1
-    fi
-    if [[ -n "$scratch" ]]; then
-        if ! mv "$outfile" "$final"; then
-            echo "ERROR: Move failed; original kept, output left at $outfile" >&2
-            rm -f "$work_infile"
-            return 1
-        fi
+    # The only place the scratch copy goes; a hard link to the source stays.
+    if [[ -n "$scratch" && ! "$work_infile" -ef "$infile_abs" ]]; then
         rm -f "$work_infile"
+    fi
+    if [[ -n "$failure" ]]; then
+        echo "$failure" >&2
+        return 1
     fi
     rm -f "$infile_abs"
     echo "SUCCESS: $final"
 }
 
+# The lock appears with its holder's marker already inside, so no waiter
+# sees it without one: mkdir a private directory, then rename it into place.
+publish_lock() {
+    local mine="$LOCK_DIR.$$"
+    [[ ! -e "$LOCK_DIR" ]] || return 1
+    rm -rf "$mine"
+    mkdir "$mine" || return 1
+    : > "$mine/pid.$$" || return 1
+    mv "$mine" "$LOCK_DIR" 2>/dev/null
+    [[ ! -e "$LOCK_DIR/pid.$$" ]] || return 0
+    # mv moves into a lock that appeared meanwhile; take the directory back.
+    rm -rf "$mine" "${LOCK_DIR:?}/${mine##*/}"
+    return 1
+}
+
+# Take a dead holder's lock by renaming its marker to ours. rename is atomic,
+# so of the waiters that saw one dead pid a single one wins, and the lock
+# never vanishes for a second waiter to delete the first's fresh one.
+reclaim_lock() {
+    local marker stray
+    LOCK_HOLDER=""
+    # pid.<PID> is the marker; older copies wrote a pid file holding the PID.
+    for marker in "$LOCK_DIR"/pid.[0-9]* "$LOCK_DIR/pid"; do
+        [[ -f "$marker" ]] || continue
+        LOCK_HOLDER=${marker##*/pid.}
+        if [[ "$marker" == "$LOCK_DIR/pid" ]]; then
+            LOCK_HOLDER=$(cat "$marker" 2>/dev/null) || LOCK_HOLDER=""
+        fi
+        # A marker naming this PID is a dead predecessor's: PIDs are reused.
+        if [[ $LOCK_HOLDER =~ ^[1-9][0-9]*$ && $LOCK_HOLDER != "$$" ]] \
+                && kill -0 "$LOCK_HOLDER" 2>/dev/null; then
+            return 1
+        fi
+        [[ "$marker" == "$LOCK_DIR/pid.$$" ]] || mv -f "$marker" "$LOCK_DIR/pid.$$" 2>/dev/null
+        return
+    done
+    # A publisher killed after its mv landed inside a lock leaves its private
+    # directory here; a live one removes its own, so only dead PIDs' go.
+    for stray in "$LOCK_DIR/${LOCK_DIR##*/}".[0-9]*; do
+        [[ -d "$stray" ]] || continue
+        if [[ ${stray##*.} == "$$" ]] || ! kill -0 "${stray##*.}" 2>/dev/null; then
+            rm -rf "$stray"
+        fi
+    done
+    # No marker means no holder; rmdir removes only an empty directory.
+    rmdir "$LOCK_DIR" 2>/dev/null && publish_lock
+}
+
 # mkdir is atomic on every platform; flock is absent on macOS.
 acquire_lock() {
-    local pid
-    until mkdir "$LOCK_DIR" 2>/dev/null; do
-        pid=$(cat "$LOCK_DIR/pid" 2>/dev/null) || pid=""
-        if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
-            rm -rf "$LOCK_DIR"
-            continue
-        fi
-        echo "Another encode is running (PID ${pid:-starting}). Waiting..." >&2
+    until publish_lock || reclaim_lock; do
+        echo "Another encode is running (PID ${LOCK_HOLDER:-unknown}). Waiting..." >&2
         sleep 30
     done
-    echo $$ > "$LOCK_DIR/pid"
     trap release_lock EXIT
 }
 
 release_lock() {
-    [[ "$(cat "$LOCK_DIR/pid" 2>/dev/null)" != "$$" ]] || rm -rf "$LOCK_DIR"
+    [[ ! -e "$LOCK_DIR/pid.$$" ]] || rm -rf "$LOCK_DIR"
 }
 
 build_relaunch_args() {
