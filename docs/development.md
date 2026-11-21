@@ -3,9 +3,10 @@
 ## Gate
 
 `tests/run.sh` is the only test entry point. It runs `bash -n` and `shellcheck` on both
-scripts, then drives `encode.sh --_internal` against stub `HandBrakeCLI`, `mediainfo` and
-`screen` in a temporary directory with its own `TMPDIR`. Each check is limited to 10 s and
-reports its duration. The stub HandBrakeCLI reads stdin like the real one.
+scripts, then drives `encode.sh` against stub `HandBrakeCLI`, `mediainfo` and a `screen`
+that runs the worker in the foreground, in a temporary directory with its own `TMPDIR`.
+Each check is limited to 10 s and reports its duration. The stub HandBrakeCLI reads stdin
+like the real one.
 
 | Check | Protects |
 |---|---|
@@ -21,6 +22,7 @@ reports its duration. The stub HandBrakeCLI reads stdin like the real one.
 | nested orphan | a dead publisher's private directory stranded inside the lock is cleared |
 | lock race | a waiter that saw a dead PID leaves the lock alone once another waiter holds it |
 | own-pid lock | a dead holder's lock naming the run's own reused PID is reclaimed |
+| wrapper | the launcher runs the worker under `ENCODE_WRAPPER`'s words, and bare when unset |
 
 `ENCODE_SCRIPT=/path/to/old/encode.sh tests/run.sh` runs the behaviour checks against another
 copy; each check but `x264 tier` and `duration` fails against the release before 2026-11-20.

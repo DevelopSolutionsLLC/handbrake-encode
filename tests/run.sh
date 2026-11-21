@@ -39,7 +39,18 @@ cat > /dev/null
 case ${in##*/} in *fail*) exit 1 ;; esac
 printf x > "$out"
 EOF
-    printf '#!/bin/sh\nexit 0\n' > "$work/bin/screen"
+    # screen -S NAME -dm CMD…: run the worker in the foreground.
+    cat > "$work/bin/screen" <<'EOF'
+#!/bin/sh
+shift 3
+exec "$@"
+EOF
+    cat > "$work/bin/wrap" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >> "$WRAP_LOG"
+shift
+exec "$@"
+EOF
     chmod +x "$work/bin/"*
 }
 
@@ -248,11 +259,28 @@ EOF
     else err "own-pid lock: exit $rc"; fi
 }
 
+# The launcher runs the worker under ENCODE_WRAPPER's words, else directly.
+test_wrapper() {
+    reset
+    touch "$work/lib/a.mkv" "$work/lib/b.mkv"
+    local wrapped=0 plain=0
+    WRAP_LOG="$work/wrap" ENCODE_WRAPPER="$work/bin/wrap --lease" \
+        run_encode -e "$work/scratch" -f "$work/lib/a.mkv" || wrapped=$?
+    WRAP_LOG="$work/wrap" run_encode -e "$work/scratch" -f "$work/lib/b.mkv" || plain=$?
+    local log
+    log=$(cat "$work/wrap" 2>/dev/null) || true
+    if [[ $wrapped -eq 0 && $plain -eq 0 && -f "$work/lib/a-x265.mkv" \
+            && -f "$work/lib/b-x265.mkv" \
+            && $log == "--lease $script --_internal -e $work/scratch -f $work/lib/a.mkv" ]]; then
+        info "ENCODE_WRAPPER wraps the detached worker; unset, the worker runs bare"
+    else err "wrapper: exits $wrapped/$plain, log '$log'"; fi
+}
+
 make_stubs
 for check in test_static test_usage test_directory test_audio test_x264_tier \
         test_duration test_stale_lock \
         test_scratch_alias test_orphan_lock test_nested_orphan test_lock_race \
-        test_own_pid_lock; do
+        test_own_pid_lock test_wrapper; do
     start=$SECONDS
     "$check"
     echo "    ($((SECONDS - start)) s)"

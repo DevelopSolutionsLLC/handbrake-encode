@@ -25,4 +25,5 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- `ENCODE_WRAPPER` runs the detached worker under a caller's command, such as a job lease.
 - `tests/run.sh`, the gate: `bash -n`, `shellcheck` and behaviour checks against stubbed tools.
