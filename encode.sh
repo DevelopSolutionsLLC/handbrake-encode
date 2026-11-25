@@ -259,6 +259,20 @@ validate_output() {
         return 1
     fi
 
+    # HandBrake without libdovi drops Dolby Vision and still exits 0.
+    local src_hdr out_hdr format
+    src_hdr=$("$MEDIAINFO" --Inform="Video;%HDR_Format%\n" "$source")
+    out_hdr=$("$MEDIAINFO" --Inform="Video;%HDR_Format%\n" "$output")
+    src_hdr=${src_hdr%%$'\n'*}
+    out_hdr=${out_hdr%%$'\n'*}
+    for format in "Dolby Vision" "SMPTE ST 2086" "SMPTE ST 2094"; do
+        if [[ $src_hdr == *"$format"* && $out_hdr != *"$format"* ]]; then
+            echo "ERROR: Output lacks the source's $format metadata" >&2
+            [[ $format != "Dolby Vision" ]] \
+                || echo "Dolby Vision needs a HandBrakeCLI built with libdovi" >&2
+            return 1
+        fi
+    done
 }
 
 # Print each subtitle track's flags as "Default:Forced", Yes or No.
