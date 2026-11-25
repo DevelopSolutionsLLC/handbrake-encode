@@ -56,7 +56,10 @@ source directory counts as the same. A scratch directory missing at runtime fall
 source directory with a warning.
 
 The source is deleted only after HandBrake exits 0, the output exists, both durations parse,
-they differ by ≤ 5 %, the subtitle flags were copied, and the move back succeeded. Any failure deletes the scratch copy and the
+they differ by ≤ 5 %, every HDR format of the source's first video stream (Dolby Vision,
+SMPTE ST 2086, SMPTE ST 2094) is in the output's, the subtitle flags were copied, and the move
+back succeeded. A HandBrakeCLI built without libdovi drops Dolby Vision and exits 0, so the HDR
+check is what keeps such a source. Any failure deletes the scratch copy and the
 partial output and keeps the source; a failed move leaves the output in the scratch directory
 and says so. One statement removes the scratch copy, and it skips a file that is the source
 itself. Every step checks its status explicitly because directory mode runs `encode_file`

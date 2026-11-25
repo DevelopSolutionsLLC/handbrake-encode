@@ -6,12 +6,13 @@ audio, encodes in a detached `screen` session, verifies the output, then deletes
 ## Responsibilities
 
 - Codec, bitrate, audio and subtitle selection for one source or a directory of `.mkv` files.
-- Safe replacement: the source goes only after the output exists, its duration is within 5 % and
-  its subtitle flags are copied.
+- Safe replacement: the source goes only after the output exists, its duration is within 5 %, it
+  keeps the source's Dolby Vision and HDR10 metadata and its subtitle flags are copied.
 - One encode at a time per `$TMPDIR`, through the `encode.lock` directory.
 
-Not responsible for: HDR or Dolby Vision metadata (HandBrake passes it through), container
-formats other than `.mkv`, library naming, or scheduling beyond its own queue.
+Not responsible for: writing HDR or Dolby Vision metadata (HandBrake passes it through; the
+script only checks it survived), container formats other than `.mkv`, library naming, or
+scheduling beyond its own queue.
 
 ## Commands
 

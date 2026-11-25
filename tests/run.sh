@@ -23,6 +23,7 @@ case ${1#--Inform=}:$name in
     'Video;%Width%'*) echo 3840 ;;
     'Video;%Height%'*) echo 2160 ;;
     'Audio;'*) cat "$STUB_AUDIO/$name" 2>/dev/null || echo '1:AC-3:en' ;;
+    'Video;%HDR_Format%'*) cat "$STUB_META/$name.hdr" 2>/dev/null || true ;;
     'Text;'*) cat "$STUB_META/$name.subs" 2>/dev/null || true ;;
     'General;%Duration%'*:*short-x26*) echo 500 ;;
     'General;%Duration%'*) echo 1000 ;;
@@ -64,6 +65,7 @@ reset() {
     mkdir -p "$work/lib" "$work/scratch" "$work/tmp" "$work/audio" "$work/meta"
     : > "$work/calls"
     : > "$work/mkv"
+    rm -f "$work/hdr-out"
 }
 
 # Run encode.sh in its own process group; kill the group after 10 s, or
@@ -191,6 +193,33 @@ test_subtitle_flags() {
     else err "subtitle flags: exits $rc_forced/$rc_scan/$rc_lost; $(tr '\n' '|' < "$work/mkv")"; fi
 }
 
+# An output that lost Dolby Vision or HDR10 is removed and the source kept.
+test_hdr_guard() {
+    reset
+    touch "$work/lib/dv.mkv" "$work/lib/hdr10.mkv" "$work/lib/kept.mkv" "$work/lib/sdr.mkv"
+    echo 'Dolby Vision / SMPTE ST 2086' > "$work/meta/dv.mkv.hdr"
+    echo 'SMPTE ST 2086' > "$work/meta/dv-x265.mkv.hdr"
+    echo 'SMPTE ST 2086' > "$work/meta/hdr10.mkv.hdr"
+    echo 'Dolby Vision / SMPTE ST 2086' > "$work/meta/kept.mkv.hdr"
+    echo 'Dolby Vision / SMPTE ST 2086 / SMPTE ST 2086' > "$work/meta/kept-x265.mkv.hdr"
+    local rc_dv=0 rc_hdr10=0 rc_kept=0 rc_sdr=0 name
+    for name in dv hdr10 kept sdr; do
+        local rc=0
+        run_encode --_internal -e "$work/scratch" -f "$work/lib/$name.mkv" || rc=$?
+        eval "rc_$name=$rc"
+        cat "$work/out" >> "$work/hdr-out"
+    done
+    if [[ $rc_dv -eq 1 && $rc_hdr10 -eq 1 && $rc_kept -eq 0 && $rc_sdr -eq 0 \
+            && -f "$work/lib/dv.mkv" && ! -e "$work/lib/dv-x265.mkv" \
+            && -f "$work/lib/hdr10.mkv" && ! -e "$work/lib/hdr10-x265.mkv" \
+            && ! -e "$work/lib/kept.mkv" && -f "$work/lib/kept-x265.mkv" \
+            && ! -e "$work/lib/sdr.mkv" && -z "$(ls -A "$work/scratch")" ]] \
+            && grep -q "lacks the source's Dolby Vision" "$work/hdr-out" \
+            && grep -q 'libdovi' "$work/hdr-out"; then
+        info "an output that lost Dolby Vision or HDR10 keeps the source"
+    else err "hdr guard: exits $rc_dv/$rc_hdr10/$rc_kept/$rc_sdr"; fi
+}
+
 test_stale_lock() {
     reset
     touch "$work/lib/a.mkv"
@@ -314,7 +343,7 @@ test_wrapper() {
 
 make_stubs
 for check in test_static test_usage test_directory test_audio test_x264_tier \
-        test_duration test_subtitle_flags test_stale_lock \
+        test_duration test_subtitle_flags test_hdr_guard test_stale_lock \
         test_scratch_alias test_orphan_lock test_nested_orphan test_lock_race \
         test_own_pid_lock test_wrapper; do
     start=$SECONDS
