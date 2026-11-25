@@ -10,6 +10,7 @@ LOCK_DIR="$TMP_ROOT/encode.lock"
 LOCK_HOLDER=""
 HANDBRAKE=""
 MEDIAINFO=""
+MKVPROPEDIT=""
 IS_WSL=0
 
 ANIME=0
@@ -56,6 +57,7 @@ check_deps() {
         HANDBRAKE=$(command -v HandBrakeCLI) || true
     fi
     MEDIAINFO=$(command -v mediainfo) || true
+    MKVPROPEDIT=$(command -v mkvpropedit) || true
     local screen_bin
     screen_bin=$(command -v screen) || true
 
@@ -65,6 +67,10 @@ check_deps() {
     fi
     if [[ -z "$MEDIAINFO" ]]; then
         echo "Please install mediainfo" >&2
+        exit 1
+    fi
+    if [[ -z "$MKVPROPEDIT" ]]; then
+        echo "Please install mkvtoolnix (mkvpropedit)" >&2
         exit 1
     fi
     if [[ -z "$screen_bin" ]]; then
@@ -194,7 +200,7 @@ build_encoder_options() {
 
     OPTIONS="--crop 0:0:0:0 --auto-anamorphic --markers"
     OPTIONS="$OPTIONS $AUDIO_OPTS"
-    OPTIONS="$OPTIONS --native-language eng --subtitle scan,1,2,3,4,5,6,7,8,9,10 --subtitle-default scan --subtitle-forced scan"
+    OPTIONS="$OPTIONS --native-language eng --subtitle scan,1,2,3,4,5,6,7,8,9,10"
 
     if [[ $SRC_HEIGHT -ge 2160 ]]; then
         CODEC_TAG="x265"
@@ -252,6 +258,45 @@ validate_output() {
         echo "WARNING: Duration mismatch — source: ${src_duration}ms, output: ${out_duration}ms" >&2
         return 1
     fi
+
+}
+
+# Print each subtitle track's flags as "Default:Forced", Yes or No.
+subtitle_flags() {
+    "$MEDIAINFO" --Inform="Text;%Default%:%Forced%\n" "$1" | grep -v '^$' || true
+}
+
+# HandBrake drops subtitle default and forced flags; copy the source's back.
+# Tracks match in order; a foreign audio scan hit leads the output.
+copy_subtitle_flags() {
+    local source="$1" output="$2" src out src_count out_count offset
+    # The subtitle list passes source tracks 1-10 only.
+    src=$(subtitle_flags "$source" | sed -n 1,10p)
+    out=$(subtitle_flags "$output")
+    src_count=$(grep -c . <<< "$src" || true)
+    out_count=$(grep -c . <<< "$out" || true)
+    [[ $src_count -gt 0 ]] || return 0
+    offset=$(( out_count - src_count ))
+    if [[ $offset -ne 0 && $offset -ne 1 ]]; then
+        echo "ERROR: Subtitle tracks: source has $src_count, output has $out_count" >&2
+        return 1
+    fi
+
+    local args=() n=0 def forced
+    # A scan hit shows only forced events, so it is default and forced.
+    if [[ $offset -eq 1 ]]; then
+        args+=(--edit track:s1 --set flag-default=1 --set flag-forced=1)
+    fi
+    while IFS=: read -r def forced; do
+        n=$(( n + 1 ))
+        args+=(--edit "track:s$(( n + offset ))"
+            --set "flag-default=$([[ $def == Yes ]] && echo 1 || echo 0)"
+            --set "flag-forced=$([[ $forced == Yes ]] && echo 1 || echo 0)")
+    done <<< "$src"
+    "$MKVPROPEDIT" -q "$output" "${args[@]}" || {
+        echo "ERROR: mkvpropedit could not set subtitle flags on $output" >&2
+        return 1
+    }
 }
 
 # Each step checks its own status: callers run this under ||, where set -e is
@@ -295,7 +340,8 @@ encode_file() {
         # shellcheck disable=SC2086
         $HANDBRAKE $OPTIONS --input "$(to_win_path "$work_infile")" --output "$(to_win_path "$outfile")" > "$logfile" 2>&1 || rc=$?
 
-        if [[ $rc -ne 0 ]] || ! validate_output "$work_infile" "$outfile"; then
+        if [[ $rc -ne 0 ]] || ! validate_output "$work_infile" "$outfile" \
+                || ! copy_subtitle_flags "$work_infile" "$outfile"; then
             failure="ENCODE FAILED: keeping original — $infile_abs"
             rm -f "$outfile"
         elif [[ -n "$scratch" ]] && ! mv "$outfile" "$final"; then

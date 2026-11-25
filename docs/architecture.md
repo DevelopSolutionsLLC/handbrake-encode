@@ -39,8 +39,13 @@ Tracks are read as `position:format:language`.
    then the first English AC-3/E-AC-3 track, else the first in any language, tagged or not.
 3. Both pass through (`-E copy`). With neither, the first AC-3/E-AC-3 track, else track 1.
 
-Subtitles: a forced-subtitle `scan` plus tracks 1–10, the scan defaulted, native language
-English.
+Subtitles: a foreign audio `scan` plus tracks 1–10, native language English. HandBrake drops
+the Matroska default and forced flags and offers no option to keep them: `--subtitle-default=N`
+also sets forced in 1.11.2 and stops doing so after upstream fa492f94354a. After validation,
+`copy_subtitle_flags` reads each of the first ten source tracks' flags with `mediainfo` and sets
+them on the output with `mkvpropedit`, matching tracks in order. A scan hit is the output's
+first track and shows only forced events, so it is set default and forced and the rest shift by
+one. Any other difference in track count fails the encode.
 
 ## Replacing the source
 
@@ -51,7 +56,7 @@ source directory counts as the same. A scratch directory missing at runtime fall
 source directory with a warning.
 
 The source is deleted only after HandBrake exits 0, the output exists, both durations parse,
-they differ by ≤ 5 %, and the move back succeeded. Any failure deletes the scratch copy and the
+they differ by ≤ 5 %, the subtitle flags were copied, and the move back succeeded. Any failure deletes the scratch copy and the
 partial output and keeps the source; a failed move leaves the output in the scratch directory
 and says so. One statement removes the scratch copy, and it skips a file that is the source
 itself. Every step checks its status explicitly because directory mode runs `encode_file`
