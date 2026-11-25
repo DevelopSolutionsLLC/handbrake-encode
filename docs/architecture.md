@@ -39,7 +39,10 @@ Tracks are read as `position:format:language`.
    then the first English AC-3/E-AC-3 track, else the first in any language, tagged or not.
 3. Both pass through (`-E copy`). With neither, the first AC-3/E-AC-3 track, else track 1.
 
-Subtitles: a foreign audio `scan` plus tracks 1–10, native language English. HandBrake drops
+Subtitles: a foreign audio `scan` plus tracks 1–10, native language English. `--subtitle-default
+scan --subtitle-forced scan` keep the scan pass: without them HandBrake 1.11.2 sets the search's
+Default and Forced false and skips the pass (measured 2026-11-25), although `test/test.c` parses
+both values as track 0. HandBrake drops
 the Matroska default and forced flags and offers no option to keep them: `--subtitle-default=N`
 also sets forced in 1.11.2 and stops doing so after upstream fa492f94354a. After validation,
 `copy_subtitle_flags` reads each of the first ten source tracks' flags with `mediainfo` and sets

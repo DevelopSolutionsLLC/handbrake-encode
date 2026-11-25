@@ -189,7 +189,9 @@ test_subtitle_flags() {
             && $(sed -n 2p "$work/mkv") == *"scanhit-x265.mkv --edit $s1 --edit track:s2 --set flag-default=1 --set flag-forced=1 --edit track:s3 $plain" \
             && ! -e "$work/lib/forced.mkv" && -f "$work/lib/lost.mkv" \
             && ! -e "$work/lib/lost-x265.mkv" ]] \
-            && grep -q 'source has 3, output has 1' "$work/out"; then
+            && grep -q 'source has 3, output has 1' "$work/out" \
+            && grep -q -- '--subtitle scan,[0-9,]* --subtitle-default scan --subtitle-forced scan' \
+                "$work/calls"; then
         info "subtitle flags copy in order, shift after a scan hit, and a count mismatch keeps the source"
     else err "subtitle flags: exits $rc_forced/$rc_scan/$rc_lost; $(tr '\n' '|' < "$work/mkv")"; fi
 }

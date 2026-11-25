@@ -201,7 +201,8 @@ build_encoder_options() {
 
     OPTIONS="--crop 0:0:0:0 --auto-anamorphic --markers"
     OPTIONS="$OPTIONS $AUDIO_OPTS"
-    OPTIONS="$OPTIONS --native-language eng --subtitle scan,1,2,3,4,5,6,7,8,9,10"
+    # Without both scan options HandBrake 1.11.2 skips the foreign audio pass.
+    OPTIONS="$OPTIONS --native-language eng --subtitle scan,1,2,3,4,5,6,7,8,9,10 --subtitle-default scan --subtitle-forced scan"
 
     if [[ $SRC_HEIGHT -ge 2160 ]]; then
         CODEC_TAG="x265"
