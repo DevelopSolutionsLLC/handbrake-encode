@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- Subtitle default and forced flags survive the encode: HandBrake dropped them, so a source's forced track no longer showed on its own in Plex. The flags are copied from the source with `mkvpropedit`; a subtitle track-count mismatch keeps the source.
 - Directory mode no longer stops after the first file: it waited on its own PID, and HandBrakeCLI could consume the file list from stdin.
 - Directory mode skips earlier outputs (`*-x264.mkv`, `*-x265.mkv`) instead of re-encoding them.
 - A failed copy, encode or move keeps the source in directory mode too; previously a failed move from the scratch directory still deleted it.
@@ -18,6 +19,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
+- `mkvpropedit` (MKVToolNix) is a required dependency.
+- The no-op `--subtitle-default scan` and `--subtitle-forced scan` options are removed; HandBrake read both as track 0.
 - The queue lock is `$TMPDIR/encode.lock` (a directory) holding a `pid.<PID>` marker; logs go to `$TMPDIR`.
 - `ENCODE_POOLS` overrides the x265 pool count.
 - A bare `encode.sh` prints usage and exits 0; dependencies are checked after options parse.

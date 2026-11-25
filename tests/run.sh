@@ -23,6 +23,7 @@ case ${1#--Inform=}:$name in
     'Video;%Width%'*) echo 3840 ;;
     'Video;%Height%'*) echo 2160 ;;
     'Audio;'*) cat "$STUB_AUDIO/$name" 2>/dev/null || echo '1:AC-3:en' ;;
+    'Text;'*) cat "$STUB_META/$name.subs" 2>/dev/null || true ;;
     'General;%Duration%'*:*short-x26*) echo 500 ;;
     'General;%Duration%'*) echo 1000 ;;
 esac
@@ -38,6 +39,10 @@ done
 cat > /dev/null
 case ${in##*/} in *fail*) exit 1 ;; esac
 printf x > "$out"
+EOF
+    cat > "$work/bin/mkvpropedit" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >> "$MKV_LOG"
 EOF
     # screen -S NAME -dm CMD…: run the worker in the foreground.
     cat > "$work/bin/screen" <<'EOF'
@@ -55,9 +60,10 @@ EOF
 }
 
 reset() {
-    rm -rf "${work:?}/lib" "$work/scratch" "$work/tmp" "$work/audio"
-    mkdir -p "$work/lib" "$work/scratch" "$work/tmp" "$work/audio"
+    rm -rf "${work:?}/lib" "$work/scratch" "$work/tmp" "$work/audio" "$work/meta"
+    mkdir -p "$work/lib" "$work/scratch" "$work/tmp" "$work/audio" "$work/meta"
     : > "$work/calls"
+    : > "$work/mkv"
 }
 
 # Run encode.sh in its own process group; kill the group after 10 s, or
@@ -65,7 +71,8 @@ reset() {
 run_encode() {
     set -m
     TMPDIR="$work/tmp" PATH="$work/bin:$PATH" STUB_LOG="$work/calls" \
-        STUB_AUDIO="$work/audio" "$script" "$@" > "$work/out" 2>&1 < /dev/null &
+        STUB_AUDIO="$work/audio" \
+        STUB_META="$work/meta" MKV_LOG="$work/mkv" "$script" "$@" > "$work/out" 2>&1 < /dev/null &
     local pid=$! ticks=0
     set +m
     while kill -0 "$pid" 2>/dev/null; do
@@ -153,6 +160,35 @@ test_duration() {
           && grep -q 'Duration mismatch' "$work/out"; then
         info "an output of the wrong duration is removed and the source kept"
     else err "duration mismatch: exit $rc, kept: $(cd "$work/lib" && echo *)"; fi
+}
+
+# Source flags are copied in order; a scan hit shifts them by one track.
+test_subtitle_flags() {
+    reset
+    touch "$work/lib/forced.mkv" "$work/lib/scanhit.mkv" "$work/lib/lost.mkv"
+    printf 'Yes:Yes\nNo:No\nNo:No\n' > "$work/meta/forced.mkv.subs"
+    printf 'No:No\nNo:No\nNo:No\n' > "$work/meta/forced-x265.mkv.subs"
+    printf 'Yes:Yes\nNo:No\n' > "$work/meta/scanhit.mkv.subs"
+    printf 'No:No\nNo:No\nNo:No\n' > "$work/meta/scanhit-x265.mkv.subs"
+    printf 'Yes:Yes\nNo:No\nNo:No\n' > "$work/meta/lost.mkv.subs"
+    printf 'No:No\n' > "$work/meta/lost-x265.mkv.subs"
+    local rc_forced=0 rc_scan=0 rc_lost=0 name
+    for name in forced scanhit lost; do
+        local rc=0
+        run_encode --_internal -e "$work/scratch" -f "$work/lib/$name.mkv" || rc=$?
+        eval "rc_${name%hit}=$rc"
+    done
+    local s1='track:s1 --set flag-default=1 --set flag-forced=1'
+    local plain='--set flag-default=0 --set flag-forced=0'
+    if [[ $rc_forced -eq 0 && $rc_scan -eq 0 && $rc_lost -eq 1 \
+            && $(wc -l < "$work/mkv") -eq 2 \
+            && $(sed -n 1p "$work/mkv") == *"forced-x265.mkv --edit $s1 --edit track:s2 $plain --edit track:s3 $plain" \
+            && $(sed -n 2p "$work/mkv") == *"scanhit-x265.mkv --edit $s1 --edit track:s2 --set flag-default=1 --set flag-forced=1 --edit track:s3 $plain" \
+            && ! -e "$work/lib/forced.mkv" && -f "$work/lib/lost.mkv" \
+            && ! -e "$work/lib/lost-x265.mkv" ]] \
+            && grep -q 'source has 3, output has 1' "$work/out"; then
+        info "subtitle flags copy in order, shift after a scan hit, and a count mismatch keeps the source"
+    else err "subtitle flags: exits $rc_forced/$rc_scan/$rc_lost; $(tr '\n' '|' < "$work/mkv")"; fi
 }
 
 test_stale_lock() {
@@ -278,7 +314,7 @@ test_wrapper() {
 
 make_stubs
 for check in test_static test_usage test_directory test_audio test_x264_tier \
-        test_duration test_stale_lock \
+        test_duration test_subtitle_flags test_stale_lock \
         test_scratch_alias test_orphan_lock test_nested_orphan test_lock_race \
         test_own_pid_lock test_wrapper; do
     start=$SECONDS

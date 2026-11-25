@@ -3,7 +3,7 @@
 ## Gate
 
 `tests/run.sh` is the only test entry point. It runs `bash -n` and `shellcheck` on both
-scripts, then drives `encode.sh` against stub `HandBrakeCLI`, `mediainfo` and a `screen`
+scripts, then drives `encode.sh` against stub `HandBrakeCLI`, `mediainfo`, `mkvpropedit` and a `screen`
 that runs the worker in the foreground, in a temporary directory with its own `TMPDIR`.
 Each check is limited to 10 s and reports its duration. The stub HandBrakeCLI reads stdin
 like the real one.
@@ -16,6 +16,7 @@ like the real one.
 | audio | English first within the lossless format; the compatibility track matches its language, or is English first when the main track is untagged |
 | x264 tier | a 1080p source takes x264 at the 1080p bitrate and the `-x264` suffix |
 | duration | an output more than 5 % off the source's duration is removed and the source kept |
+| subtitle flags | source flags are copied in order, shifted by one after a scan hit; a track-count mismatch keeps the source |
 | stale lock | a dead holder's lock is reclaimed and the run releases its own |
 | scratch alias | a scratch path that resolves to the source directory never costs the source |
 | orphan lock | a lock directory without a holder's marker is reclaimed |
