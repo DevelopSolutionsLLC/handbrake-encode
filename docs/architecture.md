@@ -59,7 +59,16 @@ The source is deleted only after HandBrake exits 0, the output exists, both dura
 they differ by ≤ 5 %, every HDR format of the source's first video stream (Dolby Vision,
 SMPTE ST 2086, SMPTE ST 2094) is in the output's, the subtitle flags were copied, and the move
 back succeeded. A HandBrakeCLI built without libdovi drops Dolby Vision and exits 0, so the HDR
-check is what keeps such a source. Any failure deletes the scratch copy and the
+check is what keeps such a source.
+
+No HandBrakeCLI version or option reports libdovi: Homebrew's 1.11.2 lacks it, and every build
+lists `--hdr-dynamic-metadata dolbyvision`. Before a Dolby Vision source is copied or encoded,
+`check_dv_support` encodes its first 2 s with x265 `ultrafast` and no audio or subtitles, then
+reads the result's HDR format; the log is `$TMPDIR/encode-dvprobe.log`. A success is remembered
+for the rest of the run. A failure stops that source and keeps it; with `-f` the launcher runs
+the probe too, so the error reaches the terminal instead of the detached session. With
+`ENCODE_ALLOW_DV_LOSS=1` the probe warns and the output check stops requiring Dolby Vision.
+Measured 2026-11-25: 4 s against a 48 GB 4K remux with the official macOS build. Any failure deletes the scratch copy and the
 partial output and keeps the source; a failed move leaves the output in the scratch directory
 and says so. One statement removes the scratch copy, and it skips a file that is the source
 itself. Every step checks its status explicitly because directory mode runs `encode_file`

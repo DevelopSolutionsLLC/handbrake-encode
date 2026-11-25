@@ -12,6 +12,7 @@ HANDBRAKE=""
 MEDIAINFO=""
 MKVPROPEDIT=""
 IS_WSL=0
+DV_SUPPORTED=0
 
 ANIME=0
 ENCODE_DIR="/mnt/SSD"
@@ -261,11 +262,10 @@ validate_output() {
 
     # HandBrake without libdovi drops Dolby Vision and still exits 0.
     local src_hdr out_hdr format
-    src_hdr=$("$MEDIAINFO" --Inform="Video;%HDR_Format%\n" "$source")
-    out_hdr=$("$MEDIAINFO" --Inform="Video;%HDR_Format%\n" "$output")
-    src_hdr=${src_hdr%%$'\n'*}
-    out_hdr=${out_hdr%%$'\n'*}
+    src_hdr=$(hdr_format "$source")
+    out_hdr=$(hdr_format "$output")
     for format in "Dolby Vision" "SMPTE ST 2086" "SMPTE ST 2094"; do
+        [[ $format != "Dolby Vision" || ${ENCODE_ALLOW_DV_LOSS:-} != 1 ]] || continue
         if [[ $src_hdr == *"$format"* && $out_hdr != *"$format"* ]]; then
             echo "ERROR: Output lacks the source's $format metadata" >&2
             [[ $format != "Dolby Vision" ]] \
@@ -273,6 +273,40 @@ validate_output() {
             return 1
         fi
     done
+}
+
+# Print the first video stream's HDR formats, "/"-separated.
+hdr_format() {
+    local formats
+    formats=$("$MEDIAINFO" --Inform="Video;%HDR_Format%\n" "$1")
+    echo "${formats%%$'\n'*}"
+}
+
+# Fail before a long encode when this HandBrakeCLI drops Dolby Vision. No
+# version or option shows libdovi (Homebrew's 1.11.2 lacks it), so a 2 s
+# encode of the source tests it; ENCODE_ALLOW_DV_LOSS=1 makes it a warning.
+check_dv_support() {
+    local file="$1" probe="$TMP_ROOT/encode-dvprobe.$$.mkv"
+    local log="$LOGDIR/encode-dvprobe.log"
+    [[ $(hdr_format "$file") == *"Dolby Vision"* ]] || return 0
+    [[ $DV_SUPPORTED -eq 0 ]] || return 0
+    echo "Testing Dolby Vision passthrough; log: $log"
+    if "$HANDBRAKE" --input "$(to_win_path "$file")" --output "$(to_win_path "$probe")" \
+            --encoder x265_10bit --encoder-preset ultrafast -q 30 \
+            --stop-at seconds:2 --audio none --subtitle none > "$log" 2>&1 < /dev/null \
+            && [[ $(hdr_format "$probe") == *"Dolby Vision"* ]]; then
+        DV_SUPPORTED=1
+    fi
+    rm -f "$probe"
+    [[ $DV_SUPPORTED -eq 0 ]] || return 0
+    if [[ ${ENCODE_ALLOW_DV_LOSS:-} == 1 ]]; then
+        echo "WARNING: $HANDBRAKE drops Dolby Vision; the output keeps HDR10 only" >&2
+        return 0
+    fi
+    echo "ERROR: $HANDBRAKE drops Dolby Vision; keeping $file" >&2
+    echo "Use HandBrakeCLI 1.7.0 or later built with libdovi, such as an official" \
+        "release build, or set ENCODE_ALLOW_DV_LOSS=1 to encode HDR10 only" >&2
+    return 1
 }
 
 # Print each subtitle track's flags as "Default:Forced", Yes or No.
@@ -326,6 +360,7 @@ encode_file() {
     local stem="${file_basename%.*}"
 
     build_encoder_options "$infile_abs" || return 1
+    check_dv_support "$infile_abs" || return 1
 
     local work_infile="$infile_abs"
     local final="${src_dir}/${stem}-${CODEC_TAG}.mkv"
@@ -492,6 +527,8 @@ main() {
 
     if [[ -n "$INFILE" ]]; then
         validate_input_file "$INFILE"
+        # The detached worker's errors vanish with its screen session.
+        [[ $INTERNAL -eq 1 ]] || check_dv_support "$INFILE" || exit 1
     fi
 
     if [[ -n "$DIR" && ! -d "$DIR" ]]; then

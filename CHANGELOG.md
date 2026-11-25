@@ -29,5 +29,6 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- A Dolby Vision source is tested with a 2 s encode before the full one: a HandBrakeCLI without libdovi stops it and keeps the source. `ENCODE_ALLOW_DV_LOSS=1` turns that into a warning and accepts HDR10-only output.
 - `ENCODE_WRAPPER` runs the detached worker under a caller's command, such as a job lease.
 - `tests/run.sh`, the gate: `bash -n`, `shellcheck` and behaviour checks against stubbed tools.
