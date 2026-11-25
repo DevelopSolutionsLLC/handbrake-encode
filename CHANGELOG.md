@@ -21,7 +21,6 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Changed
 
 - `mkvpropedit` (MKVToolNix) is a required dependency.
-- The no-op `--subtitle-default scan` and `--subtitle-forced scan` options are removed; HandBrake read both as track 0.
 - The queue lock is `$TMPDIR/encode.lock` (a directory) holding a `pid.<PID>` marker; logs go to `$TMPDIR`.
 - `ENCODE_POOLS` overrides the x265 pool count.
 - A bare `encode.sh` prints usage and exits 0; dependencies are checked after options parse.
