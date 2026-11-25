@@ -5,7 +5,7 @@
 ## Requirements
 
 - [HandBrakeCLI](https://handbrake.fr/), [mediainfo](https://mediaarea.net/en/MediaInfo), [MKVToolNix](https://mkvtoolnix.download/) (`mkvpropedit`) and [screen](https://www.gnu.org/software/screen/)
-- For Dolby Vision, a HandBrakeCLI built with libdovi: the official release builds are; Homebrew's `handbrake` and Debian's `handbrake-cli` are not, and an output without Dolby Vision keeps the source
+- For Dolby Vision, a HandBrakeCLI built with libdovi: the official release builds are; Homebrew's `handbrake` and Debian's `handbrake-cli` are not. No version or option reports libdovi, so for a Dolby Vision source `encode.sh` first encodes 2 s and stops, keeping the source, when Dolby Vision does not survive; `ENCODE_ALLOW_DV_LOSS=1` makes that a warning and accepts HDR10-only output
 - Bash 3.2 or later; macOS, Linux and WSL (which uses `HandBrakeCLI.exe` from the Windows PATH)
 
 ## Install

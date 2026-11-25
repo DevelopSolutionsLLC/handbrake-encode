@@ -18,6 +18,7 @@ like the real one.
 | duration | an output more than 5 % off the source's duration is removed and the source kept |
 | subtitle flags | source flags are copied in order, shifted by one after a scan hit; a track-count mismatch keeps the source |
 | HDR guard | an output that lost Dolby Vision or HDR10 is removed and the source kept |
+| DV probe | a HandBrakeCLI that drops Dolby Vision stops a Dolby Vision source before encoding, from the launcher too; `ENCODE_ALLOW_DV_LOSS=1` warns and encodes |
 | stale lock | a dead holder's lock is reclaimed and the run releases its own |
 | scratch alias | a scratch path that resolves to the source directory never costs the source |
 | orphan lock | a lock directory without a holder's marker is reclaimed |

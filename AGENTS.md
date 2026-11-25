@@ -29,7 +29,7 @@ scheduling beyond its own queue.
   status checked explicitly: directory mode calls it under `||`, where `set -e` is off.
 - Bash 3.2 is the floor (macOS `/bin/bash`): no `mapfile`, associative arrays or `${var,,}`.
 - HandBrakeCLI reads stdin for key commands; never feed a loop's list on stdin.
-- `ENCODE_POOLS` overrides the x265 pool count; `TMPDIR` locates the lock and logs;
+- `ENCODE_ALLOW_DV_LOSS=1` accepts output without Dolby Vision; `ENCODE_POOLS` overrides the x265 pool count; `TMPDIR` locates the lock and logs;
   `ENCODE_WRAPPER` prefixes the detached worker as shell words.
 - Run `tests/run.sh` before every commit; a behaviour change updates `docs/architecture.md`
   and `CHANGELOG.md`.

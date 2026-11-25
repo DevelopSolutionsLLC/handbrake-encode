@@ -23,6 +23,7 @@ case ${1#--Inform=}:$name in
     'Video;%Width%'*) echo 3840 ;;
     'Video;%Height%'*) echo 2160 ;;
     'Audio;'*) cat "$STUB_AUDIO/$name" 2>/dev/null || echo '1:AC-3:en' ;;
+    'Video;%HDR_Format%'*:encode-dvprobe*) cat "$STUB_META/probe.hdr" 2>/dev/null || true ;;
     'Video;%HDR_Format%'*) cat "$STUB_META/$name.hdr" 2>/dev/null || true ;;
     'Text;'*) cat "$STUB_META/$name.subs" 2>/dev/null || true ;;
     'General;%Duration%'*:*short-x26*) echo 500 ;;
@@ -65,7 +66,7 @@ reset() {
     mkdir -p "$work/lib" "$work/scratch" "$work/tmp" "$work/audio" "$work/meta"
     : > "$work/calls"
     : > "$work/mkv"
-    rm -f "$work/hdr-out"
+    rm -f "$work/hdr-out" "$work/dv-out"
 }
 
 # Run encode.sh in its own process group; kill the group after 10 s, or
@@ -202,6 +203,7 @@ test_hdr_guard() {
     echo 'SMPTE ST 2086' > "$work/meta/hdr10.mkv.hdr"
     echo 'Dolby Vision / SMPTE ST 2086' > "$work/meta/kept.mkv.hdr"
     echo 'Dolby Vision / SMPTE ST 2086 / SMPTE ST 2086' > "$work/meta/kept-x265.mkv.hdr"
+    echo 'Dolby Vision / SMPTE ST 2086' > "$work/meta/probe.hdr"
     local rc_dv=0 rc_hdr10=0 rc_kept=0 rc_sdr=0 name
     for name in dv hdr10 kept sdr; do
         local rc=0
@@ -218,6 +220,38 @@ test_hdr_guard() {
             && grep -q 'libdovi' "$work/hdr-out"; then
         info "an output that lost Dolby Vision or HDR10 keeps the source"
     else err "hdr guard: exits $rc_dv/$rc_hdr10/$rc_kept/$rc_sdr"; fi
+}
+
+# A HandBrakeCLI that drops Dolby Vision fails before the encode, unless
+# ENCODE_ALLOW_DV_LOSS=1 turns it into a warning.
+test_dv_probe() {
+    reset
+    touch "$work/lib/nodv.mkv" "$work/lib/allow.mkv" "$work/lib/launch.mkv"
+    local name
+    for name in nodv allow launch; do
+        echo 'Dolby Vision / SMPTE ST 2086' > "$work/meta/$name.mkv.hdr"
+    done
+    echo 'SMPTE ST 2086' > "$work/meta/allow-x265.mkv.hdr"
+    local rc_nodv=0 rc_allow=0 rc_launch=0 calls_nodv calls_launch
+    run_encode --_internal -e "$work/scratch" -f "$work/lib/nodv.mkv" || rc_nodv=$?
+    calls_nodv=$(wc -l < "$work/calls")
+    cat "$work/out" > "$work/dv-out"
+    ENCODE_ALLOW_DV_LOSS=1 run_encode --_internal -e "$work/scratch" \
+        -f "$work/lib/allow.mkv" || rc_allow=$?
+    cat "$work/out" >> "$work/dv-out"
+    : > "$work/calls"
+    run_encode -e "$work/scratch" -f "$work/lib/launch.mkv" || rc_launch=$?
+    calls_launch=$(wc -l < "$work/calls")
+    if [[ $rc_nodv -eq 1 && $calls_nodv -eq 1 && $rc_allow -eq 0 \
+            && $rc_launch -eq 1 && $calls_launch -eq 1 \
+            && -f "$work/lib/nodv.mkv" && -f "$work/lib/launch.mkv" \
+            && ! -e "$work/lib/allow.mkv" && -f "$work/lib/allow-x265.mkv" ]] \
+            && grep -q -- '--stop-at seconds:2' "$work/calls" \
+            && grep -q 'drops Dolby Vision; keeping' "$work/dv-out" \
+            && grep -q 'WARNING: .*HDR10 only' "$work/dv-out" \
+            && ! grep -q 'Encode launched' "$work/out"; then
+        info "a HandBrakeCLI that drops Dolby Vision stops before encoding, or warns when allowed"
+    else err "dv probe: exits $rc_nodv/$rc_allow/$rc_launch, calls $calls_nodv/$calls_launch"; fi
 }
 
 test_stale_lock() {
@@ -343,7 +377,8 @@ test_wrapper() {
 
 make_stubs
 for check in test_static test_usage test_directory test_audio test_x264_tier \
-        test_duration test_subtitle_flags test_hdr_guard test_stale_lock \
+        test_duration test_subtitle_flags test_hdr_guard test_dv_probe \
+        test_stale_lock \
         test_scratch_alias test_orphan_lock test_nested_orphan test_lock_race \
         test_own_pid_lock test_wrapper; do
     start=$SECONDS
