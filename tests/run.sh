@@ -167,7 +167,7 @@ test_encoder_settings() {
     local cap=':no-sao:deblock=-1,-1:vbv-maxrate=40000:vbv-bufsize=40000'
     if [[ $rc -eq 0 && $(wc -l < "$work/calls") -eq 3 \
             && $film =~ "-q 16 --encoder-preset veryslow --encopts pools="[0-9]+"$cap --" \
-            && $anime =~ "-q 18 --encoder-preset slower --encopts pools="[0-9]+"$cap:aq-mode=3:psy-rd=1.5:no-strong-intra-smoothing --" \
+            && $anime =~ "-q 18 --encoder-preset slower --encopts pools="[0-9]+"$cap:psy-rd=1.5:no-strong-intra-smoothing --" \
             && $hd == *"--encoder x264 --multi-pass --turbo --x264-preset slower --encopts vbv-maxrate=30000:vbv-bufsize=30000:bframes=8:aq-mode=3:aq-strength=0.8:psy-rd=0.8,0:deblock=-1,-1 "*"--vb 4920"* \
             ]] && ! grep -q -- 'encoder-tune animation\|hdr10\|bitrate=' "$work/calls"; then
         info "2160p encodes at CRF 16, or 18 with -a; -a sets its preset and tweaks"

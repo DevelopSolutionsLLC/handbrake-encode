@@ -22,7 +22,7 @@ second stream, which is ignored.
   tune, `bframes=8:aq-mode=3:aq-strength=0.8:psy-rd=0.8,0:deblock=-1,-1`.
 - x265: Main10 5.1, CRF from the table with VBV capped at the buffer, no SAO, deblock
   `-1,-1`, no tune. Film: preset `veryslow`. Anime: preset `slower`,
-  `aq-mode=3:psy-rd=1.5:no-strong-intra-smoothing`.
+  `psy-rd=1.5:no-strong-intra-smoothing`.
 - HDR: HandBrake sets `hdr10-opt`, the mastering display and content light level from an
   HDR10 source (PQ, BT.2020, 10-bit) and leaves an SDR source unflagged; the script only
   checks that the output kept the source's HDR formats.
