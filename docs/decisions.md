@@ -42,4 +42,5 @@ Forbids: `placebo`; the animation tune under `-a`; a bitrate in x265 `--encopts`
 overrides; forcing `hdr10` or `hdr10-opt`. Rejected: x265 two-pass at 2160p, too slow for a
 fixed size the library does not need; x264 one-pass CRF, since x264 tiers keep fixed sizes;
 QSV or NVENC first passes, since both passes share the encoder's stats file; x264 `keyint=24`,
-a Blu-ray authoring rule these files do not follow.
+a Blu-ray authoring rule these files do not follow; x265 `aq-mode=3` for anime, which doubled a
+20 s 4K clip at CRF 18 (12.0 MB against 7.2 MB, 2026-11-26, #13).

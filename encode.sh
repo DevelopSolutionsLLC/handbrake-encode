@@ -211,10 +211,11 @@ build_encoder_options() {
         CODEC_TAG="x265"
         local preset="veryslow"
         local anime_opts=""
-        # The animation tune's psy-rd 0.4 and aq-strength 0.4 flatten texture.
+        # The animation tune's psy-rd 0.4 and aq-strength 0.4 flatten texture;
+        # aq-mode 3 doubled anime's size at CRF 18 (#13 clip run).
         if [[ "$ANIME" == "1" ]]; then
             preset="slower"
-            anime_opts=":aq-mode=3:psy-rd=1.5:no-strong-intra-smoothing"
+            anime_opts=":psy-rd=1.5:no-strong-intra-smoothing"
         fi
 
         OPTIONS="$OPTIONS --encoder x265_10bit --encoder-profile main10 --encoder-level 5.1"
