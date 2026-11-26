@@ -28,3 +28,18 @@ a waiter; left in place it blocked every waiter for good. Rejected: a PID file
 claimed with `noclobber` and stolen by rename, which deadlocked 14 of 15 trials when a waiter
 took a live claimant's file; an age limit for PID-less locks, which the marker makes
 unnecessary.
+
+## 003 — Encoder presets, tunes and rate control per tier
+
+Decided 2026-11-25. x264 (below 2160p) stays two-pass ABR at the table bitrate, turbo first
+pass, preset `veryslow` for film and `slower` for anime. x265 (2160p) is CRF 16 for film and
+CRF 18 for anime with the VBV cap, preset `veryslow` and `slower`. Anime uses explicit
+`aq-mode`, `psy-rd` and deblock settings instead of the animation tune. Why: Streaming Learning
+Center's x264 preset test put `placebo` at about 3 times `veryslow`'s time for a slight
+quality drop (published, not measured here), and the animation tune is
+built for flat cel animation, so it flattened CGI texture; `-a` must stay faster than film.
+Forbids: `placebo`; the animation tune under `-a`; a bitrate in x265 `--encopts`, which `-q`
+overrides; forcing `hdr10` or `hdr10-opt`. Rejected: x265 two-pass at 2160p, too slow for a
+fixed size the library does not need; x264 one-pass CRF, since x264 tiers keep fixed sizes;
+QSV or NVENC first passes, since both passes share the encoder's stats file; x264 `keyint=24`,
+a Blu-ray authoring rule these files do not follow.

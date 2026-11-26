@@ -18,7 +18,7 @@ Clone the repository and run `./encode.sh`, or copy `encode.sh` onto your PATH.
 |---|---|
 | `./encode.sh -f movie.mkv` | Encode one file |
 | `./encode.sh -d /path/to/movies` | Encode every `.mkv` under the directory, one at a time |
-| `./encode.sh -a -f anime.mkv` | Anime tune and bitrate |
+| `./encode.sh -a -f anime.mkv` | Anime preset, tweaks and rate |
 | `./encode.sh -e /mnt/SSD -f movie.mkv` | Encode on a scratch drive (default `/mnt/SSD`) |
 | `screen -r encoding` | Watch a running encode |
 

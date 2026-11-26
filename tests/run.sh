@@ -147,10 +147,31 @@ test_x264_tier() {
     run_encode --_internal -e "$work/scratch" -f "$work/lib/hd1080.mkv" || rc=$?
     if [[ $rc -eq 0 && -f "$work/lib/hd1080-x264.mkv" && ! -e "$work/lib/hd1080.mkv" \
           && $(wc -l < "$work/calls") -eq 1 ]] \
-          && grep -q -- '--encoder x264 .*:bitrate=14020:vbv-maxrate=30000:.* --vb 14020' "$work/calls" \
+          && grep -q -- '--encoder x264 --encoder-tune film --multi-pass --turbo --x264-preset veryslow --encopts vbv-maxrate=30000:vbv-bufsize=30000 .* --vb 14020' "$work/calls" \
           && ! grep -q x265 "$work/calls"; then
         info "a 1080p source encodes with x264 at the 1080p bitrate"
     else err "x264 tier: exit $rc, $(grep -o -- '--encoder [a-z0-9_]*\|bitrate=[0-9]*' "$work/calls" | tr '\n' ' ')"; fi
+}
+
+# 2160p is CRF by mode with VBV; -a also sets the faster preset and tweaks.
+test_encoder_settings() {
+    reset
+    touch "$work/lib/uhd.mkv" "$work/lib/uhd-anime.mkv" "$work/lib/hd1080-anime.mkv"
+    local rc=0 film anime hd
+    run_encode --_internal -e "$work/scratch" -f "$work/lib/uhd.mkv" || rc=$?
+    grep -q 'x265, quality=16, buffer=40000' "$work/out" || rc=2
+    run_encode --_internal -a -e "$work/scratch" -f "$work/lib/uhd-anime.mkv" || rc=$?
+    grep -q 'x265, quality=18, buffer=40000' "$work/out" || rc=3
+    run_encode --_internal -a -e "$work/scratch" -f "$work/lib/hd1080-anime.mkv" || rc=$?
+    film=$(sed -n 1p "$work/calls") anime=$(sed -n 2p "$work/calls") hd=$(sed -n 3p "$work/calls")
+    local cap=':no-sao:deblock=-1,-1:vbv-maxrate=40000:vbv-bufsize=40000'
+    if [[ $rc -eq 0 && $(wc -l < "$work/calls") -eq 3 \
+            && $film =~ "-q 16 --encoder-preset veryslow --encopts pools="[0-9]+"$cap --" \
+            && $anime =~ "-q 18 --encoder-preset slower --encopts pools="[0-9]+"$cap:aq-mode=3:psy-rd=1.5:no-strong-intra-smoothing --" \
+            && $hd == *"--encoder x264 --multi-pass --turbo --x264-preset slower --encopts vbv-maxrate=30000:vbv-bufsize=30000:bframes=8:aq-mode=3:aq-strength=0.8:psy-rd=0.8,0:deblock=-1,-1 "*"--vb 4920"* \
+            ]] && ! grep -q -- 'encoder-tune animation\|hdr10\|bitrate=' "$work/calls"; then
+        info "2160p encodes at CRF 16, or 18 with -a; -a sets its preset and tweaks"
+    else err "encoder settings: exit $rc, $(cut -c1-400 "$work/calls")"; fi
 }
 
 test_duration() {
@@ -378,7 +399,7 @@ test_wrapper() {
 }
 
 make_stubs
-for check in test_static test_usage test_directory test_audio test_x264_tier \
+for check in test_static test_usage test_directory test_audio test_x264_tier test_encoder_settings \
         test_duration test_subtitle_flags test_hdr_guard test_dv_probe \
         test_stale_lock \
         test_scratch_alias test_orphan_lock test_nested_orphan test_lock_race \

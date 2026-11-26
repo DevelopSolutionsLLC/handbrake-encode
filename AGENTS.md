@@ -20,7 +20,7 @@ scheduling beyond its own queue.
 |---|---|
 | `./encode.sh -f FILE` | encode one file in `screen` session `encoding` |
 | `./encode.sh -d DIR` | encode every `.mkv` under `DIR`, skipping `*-x264.mkv` and `*-x265.mkv` |
-| `./encode.sh -a …` / `-e DIR` | anime tune and bitrate / scratch directory (default `/mnt/SSD`) |
+| `./encode.sh -a …` / `-e DIR` | anime preset, tweaks and rate / scratch directory (default `/mnt/SSD`) |
 | `tests/run.sh` | the gate: `bash -n`, `shellcheck`, behaviour against stubbed tools |
 
 ## Rules

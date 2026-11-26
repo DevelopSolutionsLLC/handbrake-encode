@@ -11,17 +11,21 @@ encodes one file or a directory.
 `mediainfo` reads the first video stream's height; Dolby Vision dual-layer sources carry a
 second stream, which is ignored.
 
-| Tier | Height | Codec | Film kbit/s | Anime kbit/s | VBV buffer |
+| Tier | Height | Codec | Film rate | Anime rate | VBV cap and buffer, kbit/s |
 |---|---|---|---|---|---|
-| SD/720p | < 1080 | x264 | 7010 | 2460 | 20000 |
-| 1080p | 1080–2159 | x264 | 14020 | 4920 | 30000 |
-| 2160p | ≥ 2160 | x265 10-bit | 18700 | 6560 | 40000 |
+| SD/720p | < 1080 | x264 | 7010 kbit/s | 2460 kbit/s | 20000 |
+| 1080p | 1080–2159 | x264 | 14020 kbit/s | 4920 kbit/s | 30000 |
+| 2160p | ≥ 2160 | x265 10-bit | CRF 16 | CRF 18 | 40000 |
 
-- x264: two-pass ABR at the table bitrate, preset `placebo`, High 4.1, tune `film` or
-  `animation`.
-- x265: Main10 5.1, `-q 16` with VBV capped at the buffer, preset `veryslow` (`slower` for
-  anime), `hdr10:hdr10-opt`, no SAO, deblock `-1,-1`. HandBrake carries the source's HDR
-  metadata; the script does not detect HDR.
+- x264: two-pass ABR at the table bitrate with a turbo first pass, High 4.1, HandBrake's
+  GOP (keyint 10 × fps). Film: preset `veryslow`, tune `film`. Anime: preset `slower`, no
+  tune, `bframes=8:aq-mode=3:aq-strength=0.8:psy-rd=0.8,0:deblock=-1,-1`.
+- x265: Main10 5.1, CRF from the table with VBV capped at the buffer, no SAO, deblock
+  `-1,-1`, no tune. Film: preset `veryslow`. Anime: preset `slower`,
+  `aq-mode=3:psy-rd=1.5:no-strong-intra-smoothing`.
+- HDR: HandBrake sets `hdr10-opt`, the mastering display and content light level from an
+  HDR10 source (PQ, BT.2020, 10-bit) and leaves an SDR source unflagged; the script only
+  checks that the output kept the source's HDR formats.
 - Threads: `nproc − 2` (`hw.ncpu − 2` on macOS), passed to x265 only as `pools=`;
   `ENCODE_POOLS` overrides it. x264 uses HandBrake's default threading.
 - Frames are never cropped or scaled: `--crop 0:0:0:0`, no `-X`/`-Y`.
