@@ -23,6 +23,7 @@ INTERNAL=0
 SRC_WIDTH=0
 SRC_HEIGHT=0
 BITRATE=0
+QUALITY=0
 BUFFER=0
 THREADS=1
 OPTIONS=""
@@ -46,7 +47,7 @@ usage() {
     echo "Usage: $0 [-a] [-e encode_dir] {-f media.mkv | -d dir}"
     echo "  -f FILE   Single file to encode"
     echo "  -d DIR    Encode every .mkv under DIR, one at a time"
-    echo "  -a        Anime mode (tune + bitrate)"
+    echo "  -a        Anime mode (faster preset, tweaks, rate)"
     echo "  -e DIR    Scratch directory for encoding (SSD/tmpfs)"
     exit "${1:-0}"
 }
@@ -123,15 +124,17 @@ validate_input_file() {
     fi
 }
 
+# x264 tiers set BITRATE (two-pass); the x265 tier sets QUALITY (CRF), and
+# BUFFER caps both.
 lookup_bitrate() {
     local height="$1"
     local anime="$2"
 
     if [[ $height -ge 2160 ]]; then
         if [[ "$anime" == "1" ]]; then
-            BITRATE=6560
+            QUALITY=18
         else
-            BITRATE=18700
+            QUALITY=16
         fi
         BUFFER=40000
     elif [[ $height -ge 1080 ]]; then
@@ -207,25 +210,32 @@ build_encoder_options() {
     if [[ $SRC_HEIGHT -ge 2160 ]]; then
         CODEC_TAG="x265"
         local preset="veryslow"
-        local tune_opt=""
+        local anime_opts=""
+        # The animation tune's psy-rd 0.4 and aq-strength 0.4 flatten texture.
         if [[ "$ANIME" == "1" ]]; then
             preset="slower"
-            tune_opt="--encoder-tune animation"
+            anime_opts=":aq-mode=3:psy-rd=1.5:no-strong-intra-smoothing"
         fi
 
         OPTIONS="$OPTIONS --encoder x265_10bit --encoder-profile main10 --encoder-level 5.1"
-        OPTIONS="$OPTIONS -q 16 --encoder-preset $preset $tune_opt"
-        OPTIONS="$OPTIONS --encopts pools=${THREADS}:no-sao:selective-sao=0:deblock=-1,-1:hdr10:hdr10-opt:bitrate=${BITRATE}:vbv-maxrate=${BUFFER}:vbv-bufsize=${BUFFER}"
+        OPTIONS="$OPTIONS -q $QUALITY --encoder-preset $preset"
+        # HandBrake sets hdr10-opt and the HDR10 SEI only for an HDR source.
+        OPTIONS="$OPTIONS --encopts pools=${THREADS}:no-sao:deblock=-1,-1:vbv-maxrate=${BUFFER}:vbv-bufsize=${BUFFER}${anime_opts}"
         OPTIONS="$OPTIONS --no-decomb --no-deinterlace"
     else
         CODEC_TAG="x264"
-        local tune="film"
+        local preset="veryslow"
+        local tune_opt="--encoder-tune film"
+        local anime_opts=""
+        # The animation tune's deblock 1:1 and psy-rd 0.4 smear CGI texture.
         if [[ "$ANIME" == "1" ]]; then
-            tune="animation"
+            preset="slower"
+            tune_opt=""
+            anime_opts=":bframes=8:aq-mode=3:aq-strength=0.8:psy-rd=0.8,0:deblock=-1,-1"
         fi
 
-        OPTIONS="$OPTIONS --encoder x264 --encoder-tune $tune --multi-pass --x264-preset placebo"
-        OPTIONS="$OPTIONS --encopts rc-lookahead=60:b-adapt=2:me=tesa:nal_hrd=vbr:min-keyint=1:keyint=24:bitrate=${BITRATE}:vbv-maxrate=${BUFFER}:vbv-bufsize=${BUFFER}:ratetol=1.0"
+        OPTIONS="$OPTIONS --encoder x264 $tune_opt --multi-pass --turbo --x264-preset $preset"
+        OPTIONS="$OPTIONS --encopts vbv-maxrate=${BUFFER}:vbv-bufsize=${BUFFER}${anime_opts}"
         OPTIONS="$OPTIONS --h264-profile high --h264-level 4.1"
         OPTIONS="$OPTIONS --vb $BITRATE"
     fi
@@ -383,7 +393,11 @@ encode_file() {
     fi
 
     if [[ -z "$failure" ]]; then
-        echo "Encoding: $file_basename (${SRC_WIDTH}x${SRC_HEIGHT}, ${CODEC_TAG}, bitrate=${BITRATE}, buffer=${BUFFER})"
+        local rate="bitrate=${BITRATE}"
+        if [[ $CODEC_TAG == x265 ]]; then
+            rate="quality=${QUALITY}"
+        fi
+        echo "Encoding: $file_basename (${SRC_WIDTH}x${SRC_HEIGHT}, ${CODEC_TAG}, ${rate}, buffer=${BUFFER})"
         echo "Log: $logfile"
         echo "Encode command: $HANDBRAKE $OPTIONS --input \"$(to_win_path "$work_infile")\" --output \"$(to_win_path "$outfile")\""
 

@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- x264 runs preset `veryslow` instead of `placebo`, with a turbo first pass and HandBrake's GOP instead of the Blu-ray 1-second GOP, `me=tesa` and settings the presets already set. Streaming Learning Center's x264 preset test put `placebo` at about 3 times `veryslow`'s encode time for a slight quality drop; at 1080p Level 4.1 both presets are held to 4 reference frames.
+- `-a` uses preset `slower` on both encoders, so anime encodes faster than film, and replaces the animation tune with explicit settings that keep CGI texture: x264 `bframes=8:aq-mode=3:aq-strength=0.8:psy-rd=0.8,0:deblock=-1,-1`, x265 `aq-mode=3:psy-rd=1.5:no-strong-intra-smoothing`. The tune's `psy-rd` 0.4 and weak AQ flattened texture, and on x264 its deblock 1:1 smoothed it further.
+- 2160p `-a` encodes at CRF 18 instead of 16. The 2160p table bitrates are gone: `-q` overrode them, so they never applied.
+- x265 no longer forces `hdr10:hdr10-opt`. HandBrake sets `hdr10-opt` and passes the mastering display and content light level for an HDR10 source, and x265 then emits the HDR10 SEI; forced on an SDR 2160p source, `hdr10-opt` only logged an x265 error.
+
 ### Fixed
 
 - Subtitle default and forced flags survive the encode: HandBrake dropped them, so a source's forced track no longer showed on its own in Plex. The flags are copied from the source with `mkvpropedit`; a subtitle track-count mismatch keeps the source.
